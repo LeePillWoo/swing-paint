@@ -5,10 +5,11 @@ const chargeWrap = document.getElementById('charge-wrap');
 const chargeFill = document.getElementById('charge-fill');
 
 // ── 모드 버튼 ───────────────────────────────────────────────────────────────
-const btnMirror = document.getElementById('btn-mirror');
-const btnStyle  = document.getElementById('btn-style');
-const btnGame   = document.getElementById('btn-game');
-const btnSave   = document.getElementById('btn-save');
+const btnMirror  = document.getElementById('btn-mirror');
+const btnStyle   = document.getElementById('btn-style');
+const btnGame    = document.getElementById('btn-game');
+const btnSave    = document.getElementById('btn-save');
+const btnPattern = document.getElementById('btn-pattern');
 
 // ── 에너지 & 스코어 ─────────────────────────────────────────────────────────
 const energyWrap  = document.getElementById('energy-wrap');
@@ -72,7 +73,13 @@ export function flashSave() {
 }
 
 // ── 이벤트 바인딩 ───────────────────────────────────────────────────────────
-export function onMirrorClick(cb) { btnMirror.addEventListener('click', cb); }
-export function onStyleClick(cb)  { btnStyle.addEventListener('click', cb); }
-export function onGameClick(cb)   { btnGame.addEventListener('click', cb); }
-export function onSaveClick(cb)   { btnSave.addEventListener('click', cb); }
+export function setPatternLabel(label, isOn) {
+  btnPattern.textContent = label;
+  btnPattern.classList.toggle('mode-on', isOn);
+}
+
+export function onMirrorClick(cb)  { btnMirror.addEventListener('click', cb); }
+export function onStyleClick(cb)   { btnStyle.addEventListener('click', cb); }
+export function onGameClick(cb)    { btnGame.addEventListener('click', cb); }
+export function onSaveClick(cb)    { btnSave.addEventListener('click', cb); }
+export function onPatternClick(cb) { btnPattern.addEventListener('click', cb); }

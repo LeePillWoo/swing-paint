@@ -1,13 +1,18 @@
 import { DT, SUBSTEPS, PINK, MINT, GOLD, BG } from './constants.js';
 import { ensureAudio, soundTap, soundChargeStart, soundChargeUpdate,
          soundChargeRelease, stopChargeOsc, soundNote } from './audio.js';
-import { resetPendulum, getPos, stepRK4, applyImpulse, a2v, a2 } from './physics.js';
+import { resetPendulum, getPos, stepRK4, applyImpulse, applySpring,
+         a2v, a2, L1, L2, cx, cy } from './physics.js';
+import { getPatternTargets, cyclePattern, stopPattern,
+         isPatternActive, getPatternLabel } from './patterns.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
          addRings, spawnParticles, cycleTrailStyle, toggleMirror } from './effects.js';
 import { updateTargets, renderTargets, getScore, resetTargets } from './targets.js';
 import { flashTap, updateChargeUI, updateEnergy, updateScore,
          setMirrorActive, setStyleLabel, setGameActive, flashSave,
-         onMirrorClick, onStyleClick, onGameClick, onSaveClick } from './ui.js';
+         setPatternLabel,
+         onMirrorClick, onStyleClick, onGameClick, onSaveClick,
+         onPatternClick } from './ui.js';
 
 new p5(function(p) {
 
@@ -47,6 +52,13 @@ new p5(function(p) {
     flashSave();
   });
 
+  onPatternClick(() => {
+    cyclePattern();
+    const on = isPatternActive();
+    setPatternLabel(getPatternLabel(), on);
+    if (!on) stopPattern(); // 완전히 끄기
+  });
+
   // ── setup ────────────────────────────────────────────────────────────────
   p.setup = function() {
     p.createCanvas(p.windowWidth, p.windowHeight);
@@ -74,6 +86,12 @@ new p5(function(p) {
 
     // 물리 적분
     for (let i = 0; i < SUBSTEPS; i++) stepRK4(DT * timeScale);
+
+    // 패턴 모드: IK 스프링으로 진자를 패턴 위에 유도
+    if (isPatternActive() && mode === 'idle') {
+      const targets = getPatternTargets(cx, cy, L1, L2);
+      if (targets) applySpring(targets[0], targets[1], 12.0, 0.28);
+    }
 
     const pos = getPos();
     const ct  = (Math.sin(colorPhase) + 1) / 2;

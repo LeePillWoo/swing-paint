@@ -54,6 +54,12 @@ export function stepRK4(dt) {
   a2v += (k1d+2*k2d+2*k3d+k4d)*dt/6;
 }
 
+// 패턴 모드: 타겟 각도로 스프링-댐퍼 힘 적용
+export function applySpring(ta1, ta2, k, d) {
+  a1v += (ta1 - a1) * k - a1v * d;
+  a2v += (ta2 - a2) * k - a2v * d;
+}
+
 // TAP: dampRatio=0.70 / CHARGE: dampRatio=0.0
 export function applyImpulse(mx, my, mul, dampRatio, p) {
   a1v *= (1 - dampRatio);
