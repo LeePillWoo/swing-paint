@@ -8,7 +8,7 @@ import { renderHUD, setHudVisible } from './hud.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
          addRings, spawnParticles, cycleTrailStyle, toggleMirror,
          trailStyle } from './effects.js';
-import { updateEnergy, getSpeedScale,
+import { updateEnergy, getSpeedScale, getTrailScale,
          setMirrorActive, setStyleLabel, setHudActive, setEnvLabel, setMassLabel,
          onMirrorClick, onStyleClick, onHudClick, onEnvClick, onMassClick } from './ui.js';
 
@@ -87,8 +87,8 @@ new p5(function(p) {
     else if (massMode === 'FEATHER') { tw = 0.8; }
     else                             { tw = 1.5; }
 
-    // 질량 모드별 잔상 페이드 배율 (IRON=긴 잔상, FEATHER=짧은 잔상)
-    const trailFade = massMode === 'IRON' ? 0.5 : massMode === 'FEATHER' ? 2.2 : 1.0;
+    // 질량 모드별 잔상 페이드 배율 (슬라이더는 렌더 시 실시간 적용)
+    const massFade = massMode === 'IRON' ? 0.5 : massMode === 'FEATHER' ? 2.2 : 1.0;
 
     // ── 드래그: 커서 각도 추적 + 각속도 계산 ─────────────────────────────
     // pending(눌림) 상태부터 추적 시작 — dragging 확정 전에도 velocity 축적
@@ -129,10 +129,10 @@ new p5(function(p) {
         const n = Math.min(Math.ceil(gap / fillPx) - 1, 12);
         for (let j = 1; j <= n; j++) {
           const t = j / (n + 1);
-          pushTrail(lp.x2 + ddx * t, lp.y2 + ddy * t, tr, tg, tb, tw, trailFade);
+          pushTrail(lp.x2 + ddx * t, lp.y2 + ddy * t, tr, tg, tb, tw, massFade);
         }
       }
-      pushTrail(sp.x2, sp.y2, tr, tg, tb, tw, trailFade);
+      pushTrail(sp.x2, sp.y2, tr, tg, tb, tw, massFade);
       lp = sp;
     }
 
@@ -146,7 +146,7 @@ new p5(function(p) {
     prevA2vSign = curSign;
 
     // ── 렌더 ─────────────────────────────────────────────────────────────
-    renderTrail(p, pos.cx, pos.cy);
+    renderTrail(p, pos.cx, pos.cy, getTrailScale());
     renderParticles(p);
     renderRings(p);
 
@@ -344,7 +344,7 @@ new p5(function(p) {
   function isUITouch(event) {
     const el = event && event.target;
     return el && (el.tagName === 'BUTTON' || el.tagName === 'INPUT' ||
-                  el.closest('#mode-panel, #speed-panel'));
+                  el.closest('#env-panel, #style-panel, #slider-panel, #hud-toggle'));
   }
 
   p.touchStarted = function(event) {

@@ -68,17 +68,17 @@ function mirrorPts(x, y, px, py) {
 }
 
 // ── 트레일 렌더 ─────────────────────────────────────────────────────────────
-export function renderTrail(p, pivotX, pivotY) {
-  if      (trailStyle === 'line')  renderLineTrail(p, pivotX, pivotY);
-  else if (trailStyle === 'comet') renderCometTrail(p, pivotX, pivotY);
-  else                             renderGlowTrail(p, pivotX, pivotY);
+export function renderTrail(p, pivotX, pivotY, trailScale = 1.0) {
+  if      (trailStyle === 'line')  renderLineTrail(p, pivotX, pivotY, trailScale);
+  else if (trailStyle === 'comet') renderCometTrail(p, pivotX, pivotY, trailScale);
+  else                             renderGlowTrail(p, pivotX, pivotY, trailScale);
 }
 
 // 글로우: 연속 세그먼트 테이퍼 스트로크 — 머리(최신)는 굵고 밝고, 꼬리(오래됨)는 얇고 희미
-function renderGlowTrail(p, pivotX, pivotY) {
+function renderGlowTrail(p, pivotX, pivotY, trailScale) {
   // 페이드 업데이트
   for (let i = trail.length - 1; i >= 0; i--) {
-    trail[i].alpha -= TRAIL_FADE_GLOW * trail[i].fade;
+    trail[i].alpha -= TRAIL_FADE_GLOW * trail[i].fade * trailScale;
     if (trail[i].alpha <= 0.008) { trail.splice(i, 1); }
   }
   if (trail.length < 2) return;
@@ -134,11 +134,11 @@ function renderGlowTrail(p, pivotX, pivotY) {
 
 // 코맷: 2레이어 원, 중간 페이드
 // 외부 헤일로는 alpha > 0.25 일 때만
-function renderCometTrail(p, pivotX, pivotY) {
+function renderCometTrail(p, pivotX, pivotY, trailScale) {
   p.noStroke();
   for (let i = trail.length - 1; i >= 0; i--) {
     const pt = trail[i];
-    pt.alpha -= TRAIL_FADE_COMET * pt.fade;
+    pt.alpha -= TRAIL_FADE_COMET * pt.fade * trailScale;
     if (pt.alpha <= 0.008) { trail.splice(i, 1); continue; }
     const a = pt.alpha, w = pt.w;
     const pts = mirrorMode ? mirrorPts(pt.x, pt.y, pivotX, pivotY) : [[pt.x, pt.y]];
@@ -152,9 +152,9 @@ function renderCometTrail(p, pivotX, pivotY) {
 }
 
 // 라인: 현재 유지 (가장 긴 잔상)
-function renderLineTrail(p, pivotX, pivotY) {
+function renderLineTrail(p, pivotX, pivotY, trailScale) {
   for (let i = trail.length - 1; i >= 0; i--) {
-    trail[i].alpha -= TRAIL_FADE_LINE * trail[i].fade;
+    trail[i].alpha -= TRAIL_FADE_LINE * trail[i].fade * trailScale;
     if (trail[i].alpha <= 0) trail.splice(i, 1);
   }
   if (trail.length < 2) return;

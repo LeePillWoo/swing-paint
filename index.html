@@ -6,11 +6,11 @@
   <title>Swing Paint</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400&display=swap" rel="stylesheet" />
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #00050a; overflow: hidden; width: 100vw; height: 100vh; }
     canvas { display: block; }
 
-    /* ── 시계 네온 컬러 사이클 (8색 × 72s) ─────────────────── */
+    /* ── 시계 네온 컬러 사이클 ─────────────────────────────────── */
     @keyframes neon-cycle {
       0%     { color: rgba(  0,200,255,0.88); text-shadow: 0 0 8px rgba(  0,200,255,1.0), 0 0 20px rgba(  0,200,255,0.5), 0 0 44px rgba(  0,200,255,0.18); }
       12.5%  { color: rgba(200,  0,255,0.88); text-shadow: 0 0 8px rgba(200,  0,255,1.0), 0 0 20px rgba(200,  0,255,0.5), 0 0 44px rgba(200,  0,255,0.18); }
@@ -33,19 +33,20 @@
       87.5%  { box-shadow: 0 0 5px rgba(  0, 80,255,0.8); }
       100%   { box-shadow: 0 0 5px rgba(  0,200,255,0.8); }
     }
+    @keyframes pulse-energy {
+      from { opacity: 0.5; } to { opacity: 1; }
+    }
 
-    /* ── 시계 디스플레이 (좌상단 소형) ─────────────────────── */
+    /* ── 시계 디스플레이 ──────────────────────────────────────── */
     #clock-display {
       position: fixed;
-      top: 18px;
-      left: 18px;
+      top: 18px; left: 18px;
       display: flex;
       flex-direction: column;
       gap: 4px;
       pointer-events: none;
       z-index: 5;
     }
-
     #clock-time {
       font-family: 'Orbitron', 'Courier New', monospace;
       font-weight: 300;
@@ -54,158 +55,227 @@
       line-height: 1;
       animation: neon-cycle 72s ease-in-out infinite;
     }
-
-    #clock-time .sep {
-      display: inline-block;
-      animation: blink-sep 1s step-end infinite;
-    }
-    @keyframes blink-sep {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.25; }
-    }
-
+    #clock-time .sep { display: inline-block; animation: blink-sep 1s step-end infinite; }
+    @keyframes blink-sep { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
     #clock-divider {
-      width: 100%;
-      height: 1px;
-      background: rgba(255, 255, 255, 0.12);
+      width: 100%; height: 1px;
+      background: rgba(255,255,255,0.12);
       animation: divider-cycle 72s ease-in-out infinite;
     }
-
     #clock-date {
       font-family: 'Orbitron', 'Courier New', monospace;
-      font-weight: 300;
-      font-size: 9px;
-      letter-spacing: 0.16em;
-      opacity: 0.55;
+      font-weight: 300; font-size: 9px;
+      letter-spacing: 0.16em; opacity: 0.55;
       animation: neon-cycle 72s ease-in-out infinite;
     }
 
-    /* ── 모드 버튼 패널 ──────────────────────────────────────── */
-    #mode-panel {
+    /* ── 패널 베이스 ──────────────────────────────────────────── */
+    .ui-panel {
       position: fixed;
-      bottom: 72px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 7px;
+      background: rgba(0, 5, 14, 0.65);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       pointer-events: auto;
       user-select: none;
       z-index: 10;
-    }
-    .mode-btn {
-      font-family: 'Courier New', monospace;
-      font-size: 9px;
-      letter-spacing: 0.12em;
-      padding: 5px 13px;
-      border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(0,5,10,0.55);
-      color: rgba(255,255,255,0.30);
-      cursor: pointer;
-      backdrop-filter: blur(8px);
-      transition: color 0.18s, border-color 0.18s, box-shadow 0.18s;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 10px;
       -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
     }
-    .mode-btn:hover   { color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.18); }
-    .mode-btn.mode-on { color: #00ddff; border-color: #00ddff; box-shadow: 0 0 12px #00ddff44; }
-    /* 버튼 그룹 구분선 */
-    .btn-sep {
-      width: 1px;
-      height: 16px;
-      background: rgba(255,255,255,0.12);
-      align-self: center;
-      margin: 0 1px;
-      flex-shrink: 0;
+    .panel-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
     }
 
-    /* ── 속도 슬라이더 패널 ──────────────────────────────────── */
-    #speed-panel {
-      position: fixed;
+    /* ── HUD 토글 (우측 상단) ────────────────────────────────── */
+    #hud-toggle {
+      top: 16px; right: 16px;
+      flex-direction: row;
+      padding: 5px 8px;
+    }
+
+    /* ── ENV + MASS 패널 (좌측 하단) ─────────────────────────── */
+    #env-panel {
+      bottom: 22px; left: 16px; width: 108px;
+      justify-content: space-between;
+    }
+
+    /* ── STYLE 패널 (우측 하단) ──────────────────────────────── */
+    #style-panel {
+      bottom: 22px; right: 16px; width: 108px;
+      justify-content: space-between;
+    }
+
+    /* ── 슬라이더 패널 (하단 중앙) ───────────────────────────── */
+    #slider-panel {
       bottom: 22px;
       left: 50%;
       transform: translateX(-50%);
-      display: flex;
-      align-items: center;
-      gap: 11px;
-      background: rgba(0,5,10,0.55);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 30px;
-      padding: 9px 22px;
-      backdrop-filter: blur(10px);
-      pointer-events: auto;
-      user-select: none;
-      z-index: 10;
+      padding: 10px 14px;
+      gap: 12px;
+      justify-content: space-between;
     }
-    .speed-label {
+
+    /* ── 패널 내 버튼 전체 폭 고정 ───────────────────────────── */
+    #env-panel .mode-btn,
+    #style-panel .mode-btn { width: 100%; text-align: center; }
+
+    /* ── 버튼 베이스 ─────────────────────────────────────────── */
+    .mode-btn {
       font-family: 'Courier New', monospace;
       font-size: 8px;
+      font-style: normal;
+      font-weight: 400;
+      letter-spacing: 0.10em;
+      padding: 4px 7px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,5,10,0.50);
+      color: rgba(255,255,255,0.28);
+      cursor: pointer;
+      transition: color 0.18s, border-color 0.18s, box-shadow 0.18s, background 0.18s;
+      touch-action: manipulation;
+      white-space: nowrap;
+      outline: none;
+    }
+    .mode-btn:hover { color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.18); }
+
+    /* ── ENV 버튼 (EARTH / SPACE / WATER) ───────────────────── */
+    .env-btn.earth {
+      color: #3dcc70;
+      border-color: rgba(61,204,112,0.38);
+      box-shadow: 0 0 8px rgba(61,204,112,0.12), inset 0 0 12px rgba(61,204,112,0.04);
+    }
+    .env-btn.earth:hover { box-shadow: 0 0 14px rgba(61,204,112,0.28); }
+
+    .env-btn.space {
+      color: #7788ff;
+      border-color: rgba(119,136,255,0.38);
+      box-shadow: 0 0 8px rgba(119,136,255,0.12), inset 0 0 12px rgba(119,136,255,0.04);
+    }
+    .env-btn.space:hover { box-shadow: 0 0 14px rgba(119,136,255,0.28); }
+
+    .env-btn.water {
+      color: #00ccdd;
+      border-color: rgba(0,204,221,0.38);
+      box-shadow: 0 0 8px rgba(0,204,221,0.12), inset 0 0 12px rgba(0,204,221,0.04);
+    }
+    .env-btn.water:hover { box-shadow: 0 0 14px rgba(0,204,221,0.28); }
+
+    /* ── MASS 버튼 (STANDARD / IRON / FEATHER) ──────────────── */
+    .mass-btn.standard {
+      color: #88aacc;
+      border-color: rgba(136,170,204,0.30);
+    }
+    .mass-btn.iron {
+      color: #b0bec8;
+      border-color: rgba(176,190,200,0.42);
+    }
+    .mass-btn.feather {
+      color: #ffe070;
+      border-color: rgba(255,224,112,0.28);
+    }
+
+    /* ── MIRROR 버튼 ─────────────────────────────────────────── */
+    .mirror-btn {
+      color: rgba(200,180,255,0.32);
+      border-color: rgba(200,180,255,0.12);
+    }
+    .mirror-btn.mode-on {
+      color: #dd44ff;
+      border-color: #dd44ff;
+      box-shadow: 0 0 12px rgba(221,68,255,0.30);
+      background: linear-gradient(135deg, rgba(0,221,255,0.06), rgba(221,68,255,0.10));
+    }
+
+    /* ── TRAIL STYLE 버튼 (GLOW / LINE / COMET) ─────────────── */
+    .trail-btn.glow {
+      color: #ff9944;
+      border-color: rgba(255,153,68,0.38);
+      box-shadow: 0 0 8px rgba(255,153,68,0.14);
+    }
+    .trail-btn.line {
+      color: #44aaff;
+      border-color: rgba(68,170,255,0.38);
+    }
+    .trail-btn.comet {
+      color: #bb88ff;
+      border-color: rgba(187,136,255,0.38);
+      box-shadow: 0 0 8px rgba(187,136,255,0.12);
+    }
+
+    /* ── HUD 버튼 ────────────────────────────────────────────── */
+    #btn-hud { border-radius: 7px; padding: 4px 10px; font-size: 8px; letter-spacing: 0.14em; }
+    #btn-hud.mode-on { color: #00ddff; border-color: #00ddff; box-shadow: 0 0 10px rgba(0,221,255,0.25); }
+
+    /* ── 슬라이더 행 ─────────────────────────────────────────── */
+    .slider-row { gap: 8px; justify-content: center; align-items: center; }
+    .slide-label {
+      font-family: 'Courier New', monospace;
+      font-size: 7.5px;
       letter-spacing: 0.10em;
       color: rgba(255,255,255,0.22);
       white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 32px;
     }
-    #speed-slider {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 130px;
-      height: 2px;
-      background: rgba(255,255,255,0.10);
-      border-radius: 2px;
-      outline: none;
-      cursor: pointer;
-      position: relative;
-    }
-    #speed-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: #00ddff;
-      cursor: pointer;
-      box-shadow: 0 0 8px #00ddff99, 0 0 2px #fff;
-      transition: box-shadow 0.15s;
-    }
-    #speed-slider:active::-webkit-slider-thumb {
-      box-shadow: 0 0 14px #00ddffcc, 0 0 3px #fff;
-    }
-    #speed-slider::-moz-range-thumb {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      border: none;
-      background: #00ddff;
-      cursor: pointer;
-      box-shadow: 0 0 8px #00ddff99;
-    }
-    #speed-slider::-moz-range-track {
-      height: 2px;
-      background: rgba(255,255,255,0.10);
-      border-radius: 2px;
-    }
-    #speed-track-wrap {
+    .slider-row .slide-label:first-child { text-align: right; }
+    .slider-row .slide-label:last-child  { text-align: left; }
+    .slider-wrap {
       position: relative;
       display: flex;
       align-items: center;
+      flex: none;
     }
-    #speed-track-wrap::after {
+    .slider-wrap::after {
       content: '';
       position: absolute;
-      left: 50%;
-      top: 50%;
+      left: 50%; top: 50%;
       transform: translate(-50%, -50%);
-      width: 1px;
-      height: 7px;
-      background: rgba(0, 221, 255, 0.30);
+      width: 1px; height: 7px;
+      background: rgba(0,221,255,0.22);
       pointer-events: none;
     }
+    input[type=range] {
+      -webkit-appearance: none; appearance: none;
+      width: 110px; height: 2px;
+      background: rgba(255,255,255,0.10);
+      border-radius: 2px;
+      outline: none; cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #00ddff;
+      cursor: pointer;
+      box-shadow: 0 0 8px #00ddff99;
+      transition: box-shadow 0.15s;
+    }
+    input[type=range]:active::-webkit-slider-thumb { box-shadow: 0 0 14px #00ddffcc; }
+    input[type=range]::-moz-range-thumb {
+      width: 12px; height: 12px;
+      border-radius: 50%; border: none;
+      background: #00ddff;
+      cursor: pointer; box-shadow: 0 0 8px #00ddff99;
+    }
+    input[type=range]::-moz-range-track {
+      height: 2px; background: rgba(255,255,255,0.10); border-radius: 2px;
+    }
 
-    /* ── 에너지 바 (화면 최하단) ─────────────────────────────── */
+    /* ── 에너지 바 ───────────────────────────────────────────── */
     #energy-wrap {
       position: fixed;
       bottom: 0; left: 0;
       width: 100%; height: 2px;
       background: rgba(255,255,255,0.04);
       pointer-events: none;
+      z-index: 10;
     }
     #energy-fill {
       height: 100%; width: 100%;
@@ -216,12 +286,17 @@
       background: linear-gradient(90deg, #ff2200, #ff6600);
       animation: pulse-energy 0.5s ease-in-out infinite alternate;
     }
-    @keyframes pulse-energy {
-      from { opacity: 0.5; } to { opacity: 1; }
+
+    /* ── 모바일 ──────────────────────────────────────────────── */
+    @media (max-width: 480px) {
+      #env-panel, #style-panel { width: 88px !important; }
+      .mode-btn { font-size: 7px; padding: 3px 6px; }
+      input[type=range] { width: 82px; }
     }
   </style>
 </head>
 <body>
+
   <!-- 시계 디스플레이 -->
   <div id="clock-display">
     <div id="clock-time">
@@ -231,24 +306,39 @@
     <div id="clock-date">MON&nbsp;&nbsp;2026.01.01</div>
   </div>
 
-  <!-- 모드 버튼: [물리: ENV · MASS] | [시각: MIRROR · GLOW] | [정보: HUD] -->
-  <div id="mode-panel">
-    <button class="mode-btn" id="btn-env">EARTH</button>
-    <button class="mode-btn" id="btn-mass">STANDARD</button>
-    <div class="btn-sep"></div>
-    <button class="mode-btn" id="btn-mirror">MIRROR</button>
-    <button class="mode-btn" id="btn-style">GLOW</button>
-    <div class="btn-sep"></div>
+  <!-- HUD 토글 (우측 상단) -->
+  <div id="hud-toggle" class="ui-panel">
     <button class="mode-btn" id="btn-hud">HUD</button>
   </div>
 
-  <!-- 속도 슬라이더 -->
-  <div id="speed-panel">
-    <span class="speed-label">SLOW</span>
-    <div id="speed-track-wrap">
-      <input type="range" id="speed-slider" min="0" max="100" value="50" />
+  <!-- ENV + MASS (좌측 하단) -->
+  <div id="env-panel" class="ui-panel">
+    <button class="mode-btn env-btn space" id="btn-env">SPACE</button>
+    <button class="mode-btn mass-btn standard" id="btn-mass">STANDARD</button>
+  </div>
+
+  <!-- 슬라이더 (하단 중앙) -->
+  <div id="slider-panel" class="ui-panel">
+    <div class="panel-row slider-row">
+      <span class="slide-label">SLOW</span>
+      <div class="slider-wrap">
+        <input type="range" id="speed-slider" min="0" max="100" value="50" />
+      </div>
+      <span class="slide-label">FAST</span>
     </div>
-    <span class="speed-label">FAST</span>
+    <div class="panel-row slider-row">
+      <span class="slide-label">SHORT</span>
+      <div class="slider-wrap">
+        <input type="range" id="trail-slider" min="0" max="100" step="2" value="50" />
+      </div>
+      <span class="slide-label">LONG</span>
+    </div>
+  </div>
+
+  <!-- MIRROR + STYLE (우측 하단) -->
+  <div id="style-panel" class="ui-panel">
+    <button class="mode-btn mirror-btn" id="btn-mirror">MIRROR</button>
+    <button class="mode-btn trail-btn glow" id="btn-style">GLOW</button>
   </div>
 
   <!-- 에너지 바 -->

@@ -10,9 +10,9 @@ const ENV = {
   WATER: { g: 120, damp: 0.85  },  // 부력+점성 — 묵직하게 감속
 };
 
-export let envMode  = 'EARTH';
-export let currentG    = ENV.EARTH.g;
-export let currentDamp = ENV.EARTH.damp;
+export let envMode  = 'SPACE';
+export let currentG    = ENV.SPACE.g;
+export let currentDamp = ENV.SPACE.damp;
 
 // 환경 타겟값 (HUD 정규화용)
 export const ENV_G_MAX    = 350;
