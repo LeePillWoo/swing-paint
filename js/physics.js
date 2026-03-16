@@ -11,8 +11,12 @@ const ENV = {
 };
 
 export let envMode  = 'EARTH';
-let currentG    = ENV.EARTH.g;
-let currentDamp = ENV.EARTH.damp;
+export let currentG    = ENV.EARTH.g;
+export let currentDamp = ENV.EARTH.damp;
+
+// 환경 타겟값 (HUD 정규화용)
+export const ENV_G_MAX    = 350;
+export const ENV_DAMP_MAX = 0.85;
 
 export function cycleEnv() {
   const modes = ['EARTH', 'SPACE', 'WATER'];

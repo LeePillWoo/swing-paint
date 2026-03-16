@@ -108,7 +108,7 @@ new p5(function(p) {
     // DT×SUBSTEPS = 0.008×4 = 0.032 → 기존 0.016×2 와 동일한 시뮬속도 유지
     const spd     = getSpeedScale();
     const isComet = trailStyle === 'comet';
-    const fillPx  = isComet ? 10 : 5;  // 코맷은 도트 간격 2배
+    const fillPx  = isComet ? 20 : 5;  // 코맷은 도트 간격 더 넓게
     let lp = getPos();
     let cometTick = 0;
 
@@ -119,8 +119,8 @@ new p5(function(p) {
       if (mode === 'dragging') overrideA1(targetDragAngle, dragVelSmooth);
       const sp = getPos();
 
-      // 코맷: 서브스텝 2회 중 1회만 push → 간격 2배
-      if (isComet && (++cometTick % 2 !== 0)) { lp = sp; continue; }
+      // 코맷: 서브스텝 4회 중 1회만 push → 기존 대비 2배 간격
+      if (isComet && (++cometTick % 4 !== 0)) { lp = sp; continue; }
 
       // 이동거리 초과 시 선형 보간으로 빈틈 채움
       const ddx = sp.x2 - lp.x2, ddy = sp.y2 - lp.y2;

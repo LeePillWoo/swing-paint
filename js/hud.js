@@ -1,12 +1,13 @@
 // ── Telemetry HUD ─────────────────────────────────────────────────────────────
 // 우측 상단 고정. 래디얼 다이얼(ω1/ω2) + 실시간 물리 수치 텍스트.
 import { G } from './constants.js';
+import { currentG, currentDamp, envMode, ENV_G_MAX, ENV_DAMP_MAX } from './physics.js';
 
 const AV_MAX  = 14;        // rad/s 정규화 상한
 
 // 패널 치수
 const PANEL_W = 168;
-const PANEL_H = 280;
+const PANEL_H = 345;
 const PAD     = 11;
 
 // 다이얼 중심 (패널 내 상대 좌표)
@@ -188,6 +189,71 @@ export function renderHUD(p, a1, a2, a1v, a2v, L1, L2, m1 = 12, m2 = 6, massMode
   p.text('M2', barX, bar2Y - 8);
   p.textAlign(p.RIGHT, p.TOP);
   p.text(m2.toFixed(0), barX + barW, bar2Y - 8);
+
+  // ── 환경·중력 섹션 ─────────────────────────────────────────────────────────
+  const envY = bar2Y + barH + 14;
+
+  // 구분선
+  p.stroke(200, 180, 100, 22);
+  p.strokeWeight(0.5);
+  p.line(ox + PAD, envY, ox + PANEL_W - PAD, envY);
+
+  // ENV 헤더 — 모드 이름 (EARTH / SPACE / WATER)
+  const envColMap = {
+    EARTH: [100, 200, 100],
+    SPACE: [100, 180, 255],
+    WATER: [ 40, 210, 200],
+  };
+  const EC = envColMap[envMode] || [180, 180, 180];
+
+  p.noStroke();
+  p.fill(180, 175, 120, 90);
+  p.textSize(6.5); p.textAlign(p.LEFT, p.TOP);
+  p.text('ENV', ox + PAD, envY + 5);
+  p.fill(EC[0], EC[1], EC[2], 200);
+  p.textSize(7.5);
+  p.textAlign(p.RIGHT, p.TOP);
+  p.text(envMode, ox + PANEL_W - PAD, envY + 4);
+
+  const eBarW  = PANEL_W - PAD * 2;
+  const eBarX  = ox + PAD;
+  const gBarY  = envY + 18;
+  const dBarY  = gBarY + 15;
+  const wBarY  = dBarY + 15;
+
+  // G 바 — 현재 중력 (0 ~ ENV_G_MAX=350)
+  const gFill  = currentG / ENV_G_MAX;
+  p.noStroke();
+  p.fill(EC[0], EC[1], EC[2], 16); p.rect(eBarX, gBarY, eBarW, barH, 2);
+  p.fill(EC[0], EC[1], EC[2], 150); p.rect(eBarX, gBarY, eBarW * gFill, barH, 2);
+  p.fill(EC[0], EC[1], EC[2], 80);
+  p.textSize(6.5); p.textAlign(p.LEFT, p.TOP);
+  p.text('G', eBarX, gBarY - 8);
+  p.textAlign(p.RIGHT, p.TOP);
+  p.text(currentG.toFixed(1), eBarX + eBarW, gBarY - 8);
+
+  // DAMP 바 — 현재 점성감쇠 (0 ~ ENV_DAMP_MAX=0.85)
+  const dFill  = currentDamp / ENV_DAMP_MAX;
+  p.fill(EC[0], EC[1], EC[2], 16); p.rect(eBarX, dBarY, eBarW, barH, 2);
+  p.fill(EC[0], EC[1], EC[2], 110); p.rect(eBarX, dBarY, eBarW * dFill, barH, 2);
+  p.fill(EC[0], EC[1], EC[2], 70);
+  p.textSize(6.5); p.textAlign(p.LEFT, p.TOP);
+  p.text('DAMP', eBarX, dBarY - 8);
+  p.textAlign(p.RIGHT, p.TOP);
+  p.text(currentDamp.toFixed(3), eBarX + eBarW, dBarY - 8);
+
+  // ω CHAOS 바 — 두 각속도 합산 크기 (시스템 전체 운동 에너지 간접 지표)
+  const chaos  = Math.min((Math.abs(a1v) + Math.abs(a2v)) / (AV_MAX * 2), 1.0);
+  const chR    = 40  + (255 -  40) * chaos;
+  const chG    = 210 + ( 60 - 210) * chaos;
+  const chB    = 170 + (  0 - 170) * chaos;
+  p.fill(chR, chG, chB, 16); p.rect(eBarX, wBarY, eBarW, barH, 2);
+  p.fill(chR, chG, chB, 160); p.rect(eBarX, wBarY, eBarW * chaos, barH, 2);
+  p.fill(chR, chG, chB, 85);
+  p.textSize(6.5); p.textAlign(p.LEFT, p.TOP);
+  p.text('CHAOS', eBarX, wBarY - 8);
+  p.textAlign(p.RIGHT, p.TOP);
+  p.text((chaos * 100).toFixed(0) + '%', eBarX + eBarW, wBarY - 8);
 
   // ── 외곽 테두리 글로우 ─────────────────────────────────────────────────────
   p.noFill();
