@@ -2,6 +2,8 @@
 const btnMirror = document.getElementById('btn-mirror');
 const btnStyle  = document.getElementById('btn-style');
 const btnHud    = document.getElementById('btn-hud');
+const btnEnv    = document.getElementById('btn-env');
+const btnMass   = document.getElementById('btn-mass');
 
 // ── 속도 슬라이더 ──────────────────────────────────────────────────────────
 const speedSlider = document.getElementById('speed-slider');
@@ -35,7 +37,12 @@ export function setHudActive(on) {
   btnHud.classList.toggle('mode-on', on);
 }
 
+export function setEnvLabel(label)  { btnEnv.textContent  = label; }
+export function setMassLabel(label) { btnMass.textContent = label; }
+
 // ── 이벤트 바인딩 ───────────────────────────────────────────────────────────
 export function onMirrorClick(cb) { btnMirror.addEventListener('click', cb); }
 export function onStyleClick(cb)  { btnStyle.addEventListener('click', cb); }
 export function onHudClick(cb)    { btnHud.addEventListener('click', cb); }
+export function onEnvClick(cb)    { btnEnv.addEventListener('click', cb); }
+export function onMassClick(cb)   { btnMass.addEventListener('click', cb); }

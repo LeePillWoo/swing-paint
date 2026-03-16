@@ -10,6 +10,30 @@
     body { background: #00050a; overflow: hidden; width: 100vw; height: 100vh; }
     canvas { display: block; }
 
+    /* ── 시계 네온 컬러 사이클 (8색 × 72s) ─────────────────── */
+    @keyframes neon-cycle {
+      0%     { color: rgba(  0,200,255,0.88); text-shadow: 0 0 8px rgba(  0,200,255,1.0), 0 0 20px rgba(  0,200,255,0.5), 0 0 44px rgba(  0,200,255,0.18); }
+      12.5%  { color: rgba(200,  0,255,0.88); text-shadow: 0 0 8px rgba(200,  0,255,1.0), 0 0 20px rgba(200,  0,255,0.5), 0 0 44px rgba(200,  0,255,0.18); }
+      25%    { color: rgba(255, 20,147,0.88); text-shadow: 0 0 8px rgba(255, 20,147,1.0), 0 0 20px rgba(255, 20,147,0.5), 0 0 44px rgba(255, 20,147,0.18); }
+      37.5%  { color: rgba( 57,255,183,0.88); text-shadow: 0 0 8px rgba( 57,255,183,1.0), 0 0 20px rgba( 57,255,183,0.5), 0 0 44px rgba( 57,255,183,0.18); }
+      50%    { color: rgba(255,100,  0,0.88); text-shadow: 0 0 8px rgba(255,100,  0,1.0), 0 0 20px rgba(255,100,  0,0.5), 0 0 44px rgba(255,100,  0,0.18); }
+      62.5%  { color: rgba(100,255, 50,0.88); text-shadow: 0 0 8px rgba(100,255, 50,1.0), 0 0 20px rgba(100,255, 50,0.5), 0 0 44px rgba(100,255, 50,0.18); }
+      75%    { color: rgba(255, 20, 60,0.88); text-shadow: 0 0 8px rgba(255, 20, 60,1.0), 0 0 20px rgba(255, 20, 60,0.5), 0 0 44px rgba(255, 20, 60,0.18); }
+      87.5%  { color: rgba(  0, 80,255,0.88); text-shadow: 0 0 8px rgba(  0, 80,255,1.0), 0 0 20px rgba(  0, 80,255,0.5), 0 0 44px rgba(  0, 80,255,0.18); }
+      100%   { color: rgba(  0,200,255,0.88); text-shadow: 0 0 8px rgba(  0,200,255,1.0), 0 0 20px rgba(  0,200,255,0.5), 0 0 44px rgba(  0,200,255,0.18); }
+    }
+    @keyframes divider-cycle {
+      0%     { box-shadow: 0 0 5px rgba(  0,200,255,0.8); }
+      12.5%  { box-shadow: 0 0 5px rgba(200,  0,255,0.8); }
+      25%    { box-shadow: 0 0 5px rgba(255, 20,147,0.8); }
+      37.5%  { box-shadow: 0 0 5px rgba( 57,255,183,0.8); }
+      50%    { box-shadow: 0 0 5px rgba(255,100,  0,0.8); }
+      62.5%  { box-shadow: 0 0 5px rgba(100,255, 50,0.8); }
+      75%    { box-shadow: 0 0 5px rgba(255, 20, 60,0.8); }
+      87.5%  { box-shadow: 0 0 5px rgba(  0, 80,255,0.8); }
+      100%   { box-shadow: 0 0 5px rgba(  0,200,255,0.8); }
+    }
+
     /* ── 시계 디스플레이 (좌상단 소형) ─────────────────────── */
     #clock-display {
       position: fixed;
@@ -26,12 +50,9 @@
       font-family: 'Orbitron', 'Courier New', monospace;
       font-weight: 300;
       font-size: 22px;
-      color: rgba(0, 221, 255, 0.82);
       letter-spacing: 0.08em;
-      text-shadow:
-        0 0 12px rgba(0, 221, 255, 0.7),
-        0 0 28px rgba(0, 221, 255, 0.3);
       line-height: 1;
+      animation: neon-cycle 72s ease-in-out infinite;
     }
 
     #clock-time .sep {
@@ -46,18 +67,17 @@
     #clock-divider {
       width: 100%;
       height: 1px;
-      background: linear-gradient(90deg,
-        rgba(0, 221, 255, 0.4),
-        transparent);
+      background: rgba(255, 255, 255, 0.12);
+      animation: divider-cycle 72s ease-in-out infinite;
     }
 
     #clock-date {
       font-family: 'Orbitron', 'Courier New', monospace;
       font-weight: 300;
       font-size: 9px;
-      color: rgba(0, 221, 255, 0.45);
       letter-spacing: 0.16em;
-      text-shadow: 0 0 10px rgba(0, 221, 255, 0.4);
+      opacity: 0.55;
+      animation: neon-cycle 72s ease-in-out infinite;
     }
 
     /* ── 모드 버튼 패널 ──────────────────────────────────────── */
@@ -89,6 +109,15 @@
     }
     .mode-btn:hover   { color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.18); }
     .mode-btn.mode-on { color: #00ddff; border-color: #00ddff; box-shadow: 0 0 12px #00ddff44; }
+    /* 버튼 그룹 구분선 */
+    .btn-sep {
+      width: 1px;
+      height: 16px;
+      background: rgba(255,255,255,0.12);
+      align-self: center;
+      margin: 0 1px;
+      flex-shrink: 0;
+    }
 
     /* ── 속도 슬라이더 패널 ──────────────────────────────────── */
     #speed-panel {
@@ -202,10 +231,14 @@
     <div id="clock-date">MON&nbsp;&nbsp;2026.01.01</div>
   </div>
 
-  <!-- 모드 버튼 -->
+  <!-- 모드 버튼: [물리: ENV · MASS] | [시각: MIRROR · GLOW] | [정보: HUD] -->
   <div id="mode-panel">
+    <button class="mode-btn" id="btn-env">EARTH</button>
+    <button class="mode-btn" id="btn-mass">STANDARD</button>
+    <div class="btn-sep"></div>
     <button class="mode-btn" id="btn-mirror">MIRROR</button>
     <button class="mode-btn" id="btn-style">GLOW</button>
+    <div class="btn-sep"></div>
     <button class="mode-btn" id="btn-hud">HUD</button>
   </div>
 

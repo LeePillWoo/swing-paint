@@ -45,8 +45,8 @@ export function spawnParticles(p, x, y, rc, gc, bc, n, spd) {
 }
 
 // 모드별 최대 버퍼 크기로 제한
-export function pushTrail(x, y, r, g, b, w) {
-  trail.push({ x, y, alpha: 1.0, r, g, b, w });
+export function pushTrail(x, y, r, g, b, w, fade = 1.0) {
+  trail.push({ x, y, alpha: 1.0, r, g, b, w, fade });
   let max;
   if      (mirrorMode)          max = TRAIL_MAX_MIRROR;
   else if (trailStyle === 'glow')  max = TRAIL_MAX_GLOW;
@@ -78,7 +78,7 @@ export function renderTrail(p, pivotX, pivotY) {
 function renderGlowTrail(p, pivotX, pivotY) {
   // 페이드 업데이트
   for (let i = trail.length - 1; i >= 0; i--) {
-    trail[i].alpha -= TRAIL_FADE_GLOW;
+    trail[i].alpha -= TRAIL_FADE_GLOW * trail[i].fade;
     if (trail[i].alpha <= 0.008) { trail.splice(i, 1); }
   }
   if (trail.length < 2) return;
@@ -138,7 +138,7 @@ function renderCometTrail(p, pivotX, pivotY) {
   p.noStroke();
   for (let i = trail.length - 1; i >= 0; i--) {
     const pt = trail[i];
-    pt.alpha -= TRAIL_FADE_COMET;
+    pt.alpha -= TRAIL_FADE_COMET * pt.fade;
     if (pt.alpha <= 0.008) { trail.splice(i, 1); continue; }
     const a = pt.alpha, w = pt.w;
     const pts = mirrorMode ? mirrorPts(pt.x, pt.y, pivotX, pivotY) : [[pt.x, pt.y]];
@@ -154,7 +154,7 @@ function renderCometTrail(p, pivotX, pivotY) {
 // 라인: 현재 유지 (가장 긴 잔상)
 function renderLineTrail(p, pivotX, pivotY) {
   for (let i = trail.length - 1; i >= 0; i--) {
-    trail[i].alpha -= TRAIL_FADE_LINE;
+    trail[i].alpha -= TRAIL_FADE_LINE * trail[i].fade;
     if (trail[i].alpha <= 0) trail.splice(i, 1);
   }
   if (trail.length < 2) return;

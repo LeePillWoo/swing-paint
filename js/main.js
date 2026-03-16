@@ -1,15 +1,17 @@
-import { DT, SUBSTEPS, PINK, MINT, GOLD, CYAN, VIOLET, BG } from './constants.js';
+import { DT, SUBSTEPS, PINK, MINT, GOLD, CYAN, VIOLET, ORANGE, LIME, RED, AZURE, BG } from './constants.js';
 import { ensureAudio, soundTap, soundChargeStart, soundChargeUpdate,
          soundChargeRelease, stopChargeOsc, soundNote } from './audio.js';
-import { resetPendulum, getPos, stepRK4, applyImpulse,
-         a1, a1v, a2, a2v, L1, L2 } from './physics.js';
+import { resetPendulum, getPos, stepRK4, applyImpulse, applyChargeImpulse,
+         a1, a1v, a2, a2v, L1, L2,
+         cycleEnv, updatePhysicsEnv, envMode,
+         cycleMass, massMode, currentM1, currentM2 } from './physics.js';
 import { renderHUD, setHudVisible } from './hud.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
          addRings, spawnParticles, cycleTrailStyle, toggleMirror,
          trailStyle } from './effects.js';
 import { updateEnergy, getSpeedScale,
-         setMirrorActive, setStyleLabel, setHudActive,
-         onMirrorClick, onStyleClick, onHudClick } from './ui.js';
+         setMirrorActive, setStyleLabel, setHudActive, setEnvLabel, setMassLabel,
+         onMirrorClick, onStyleClick, onHudClick, onEnvClick, onMassClick } from './ui.js';
 
 new p5(function(p) {
 
@@ -42,6 +44,9 @@ new p5(function(p) {
     setHudActive(next);
   });
 
+  onEnvClick(()  => setEnvLabel(cycleEnv()));
+  onMassClick(() => setMassLabel(cycleMass()));
+
   let _hudOn = false;
 
   // ── setup ────────────────────────────────────────────────────────────────
@@ -53,6 +58,7 @@ new p5(function(p) {
 
   // ── draw ─────────────────────────────────────────────────────────────────
   p.draw = function() {
+    updatePhysicsEnv();
     p.background(...BG, 255);
     colorPhase += 0.008;
 
@@ -78,17 +84,23 @@ new p5(function(p) {
       tb = p.lerp(GOLD[2],   0, chargeLevel);
       tw = p.lerp(1.4, 6.5, chargeLevel);
     } else {
-      // 4색 사이버 사이클: PINK → CYAN → MINT → VIOLET → PINK
-      const PALETTE = [PINK, CYAN, MINT, VIOLET];
+      // 8색 사이버 사이클
+      const PALETTE = [CYAN, VIOLET, PINK, MINT, ORANGE, LIME, RED, AZURE];
       const cycleT  = (colorPhase % (Math.PI * 2)) / (Math.PI * 2);
-      const seg     = Math.floor(cycleT * 4) % 4;
-      const st      = (cycleT * 4) % 1;
-      const c0 = PALETTE[seg], c1 = PALETTE[(seg + 1) % 4];
+      const seg     = Math.floor(cycleT * 8) % 8;
+      const st      = (cycleT * 8) % 1;
+      const c0 = PALETTE[seg], c1 = PALETTE[(seg + 1) % 8];
       tr = p.lerp(c0[0], c1[0], st);
       tg = p.lerp(c0[1], c1[1], st);
       tb = p.lerp(c0[2], c1[2], st);
-      tw = 1.5;
+      // 질량 모드별 선 굵기·잔상 속도
+      if      (massMode === 'IRON')    { tw = 2.2; }
+      else if (massMode === 'FEATHER') { tw = 0.8; }
+      else                             { tw = 1.5; }
     }
+
+    // 질량 모드별 잔상 페이드 배율 (IRON=긴 잔상, FEATHER=짧은 잔상)
+    const trailFade = massMode === 'IRON' ? 0.5 : massMode === 'FEATHER' ? 2.2 : 1.0;
 
     // ── 물리 적분 + 서브스텝마다 궤적 누적 ───────────────────────────────
     // DT×SUBSTEPS = 0.008×4 = 0.032 → 기존 0.016×2 와 동일한 시뮬속도 유지
@@ -112,10 +124,10 @@ new p5(function(p) {
         const n = Math.min(Math.ceil(gap / fillPx) - 1, 12);
         for (let j = 1; j <= n; j++) {
           const t = j / (n + 1);
-          pushTrail(lp.x2 + ddx * t, lp.y2 + ddy * t, tr, tg, tb, tw);
+          pushTrail(lp.x2 + ddx * t, lp.y2 + ddy * t, tr, tg, tb, tw, trailFade);
         }
       }
-      pushTrail(sp.x2, sp.y2, tr, tg, tb, tw);
+      pushTrail(sp.x2, sp.y2, tr, tg, tb, tw, trailFade);
       lp = sp;
     }
 
@@ -133,41 +145,135 @@ new p5(function(p) {
     renderParticles(p);
     renderRings(p);
 
-    // ── 진자 팔 ───────────────────────────────────────────────────────────
-    p.stroke(60, 80, 110, 180);
-    p.strokeWeight(1.2);
-    p.line(pos.cx,  pos.cy,  pos.x1, pos.y1);
-    p.line(pos.x1, pos.y1,  pos.x2, pos.y2);
+    // ── 진자 팔 + 조인트 (환경 모드별) ──────────────────────────────────
+    drawStructure(p, pos);
 
-    // ── 조인트 ────────────────────────────────────────────────────────────
-    p.noStroke();
-    p.fill(120, 140, 160, 200); p.circle(pos.cx,  pos.cy,  10);
-    p.fill(160, 180, 200, 200); p.circle(pos.x1, pos.y1,  10);
-
-    // ── bob2 ──────────────────────────────────────────────────────────────
+    // ── bob2 (질량 모드별) ────────────────────────────────────────────────
     if (mode === 'charging') {
       const gs = 14 + chargeLevel * 44;
+      p.noStroke();
       p.fill(255, 170,   0, chargeLevel *  55); p.circle(pos.x2, pos.y2, gs * 3.2);
       p.fill(255, 210,  60, chargeLevel * 110); p.circle(pos.x2, pos.y2, gs * 1.5);
       p.fill(255, 255, 200, 215);               p.circle(pos.x2, pos.y2, gs * 0.5);
     } else {
-      const br = p.lerp(PINK[0], MINT[0], ct);
-      const bg = p.lerp(PINK[1], MINT[1], ct);
-      const bb = p.lerp(PINK[2], MINT[2], ct);
-      p.fill(br, bg, bb,  50); p.circle(pos.x2, pos.y2, 38);
-      p.fill(br, bg, bb, 120); p.circle(pos.x2, pos.y2, 18);
-      p.fill(255, 255, 255, 220); p.circle(pos.x2, pos.y2,  5);
+      drawBob2(p, pos);
     }
 
     // ── 조준 화살표 (충전 중) ─────────────────────────────────────────────
     if (mode === 'charging') drawAimArrow(p, pos.x2, pos.y2);
 
     // ── Telemetry HUD ─────────────────────────────────────────────────────
-    renderHUD(p, a1, a2, a1v, a2v, L1, L2);
+    renderHUD(p, a1, a2, a1v, a2v, L1, L2, currentM1, currentM2, massMode);
 
     // ── UI 업데이트 ───────────────────────────────────────────────────────
     updateEnergy(energy);
   };
+
+  // ── bob2 — 질량 모드별 시각 ──────────────────────────────────────────────
+  function drawBob2(p, pos) {
+    const { x2, y2 } = pos;
+    p.noStroke();
+
+    if (massMode === 'IRON') {
+      // 무거운 철추 — 크고 묵직한 금속 구체 + 그림자
+      const bs = 7 + currentM2 * 0.62;         // M2=22 → bs≈20.6
+      // 바닥 그림자 (중력감)
+      p.fill(  0,   0,   0,  55); p.ellipse(x2 + bs*0.18, y2 + bs*0.22, bs * 2.0, bs * 0.55);
+      // 구체 레이어
+      p.fill( 40,  50,  65,  38); p.circle(x2, y2, bs * 4.2); // 넓은 어두운 헤일로
+      p.fill( 70,  85, 105, 100); p.circle(x2, y2, bs * 2.4); // 어두운 금속 몸체
+      p.fill(115, 135, 158, 215); p.circle(x2, y2, bs);        // 금속 표면
+      p.fill(175, 200, 222, 200); p.circle(x2, y2, bs * 0.50); // 밝은 캡
+      p.fill(220, 232, 248, 180); p.circle(x2 - bs*0.15, y2 - bs*0.15, bs * 0.22); // 반사광
+
+    } else if (massMode === 'FEATHER') {
+      // 가벼운 깃털 — 작고 빛나는 별 (8방향 스파크)
+      const bs = 3.5 + currentM2 * 2.2;        // M2=1 → bs≈5.7
+      p.fill(255, 255, 200,  28); p.circle(x2, y2, bs * 8);   // 넓고 부드러운 글로우
+      p.fill(255, 255, 185,  75); p.circle(x2, y2, bs * 4);   // 중간 글로우
+      // 8방향 스파크 (별빛) — 4개 긴 + 4개 짧은
+      p.noFill();
+      for (let i = 0; i < 8; i++) {
+        const a    = i * Math.PI / 4;
+        const long = (i % 2 === 0);
+        const len  = long ? bs * 5.5 : bs * 3.2;
+        const alpha = long ? 110 : 65;
+        p.stroke(255, 255, 220, alpha); p.strokeWeight(long ? 0.9 : 0.6);
+        p.line(x2, y2, x2 + Math.cos(a)*len, y2 + Math.sin(a)*len);
+      }
+      p.noStroke();
+      p.fill(255, 255, 230, 175); p.circle(x2, y2, bs * 2.2);
+      p.fill(255, 255, 255, 250); p.circle(x2, y2, bs * 0.9); // 밝은 핵
+
+    } else {
+      // STANDARD — 기존 색상 사이클 구체
+      const ct = (Math.sin(colorPhase) + 1) / 2;
+      const br = p.lerp(PINK[0], MINT[0], ct);
+      const bg = p.lerp(PINK[1], MINT[1], ct);
+      const bb = p.lerp(PINK[2], MINT[2], ct);
+      p.fill(br, bg, bb,  50); p.circle(x2, y2, 38);
+      p.fill(br, bg, bb, 120); p.circle(x2, y2, 18);
+      p.fill(255, 255, 255, 220); p.circle(x2, y2,  5);
+    }
+  }
+
+  // ── 환경 모드별 팔 + 피벗 렌더 (질량 스케일 반영) ────────────────────────
+  function drawStructure(p, pos) {
+    const { cx, cy, x1, y1, x2, y2 } = pos;
+    // 조인트1 크기: 상부 질량에 비례 (FEATHER→6, STANDARD→9.5, IRON→12)
+    const j1s = 4.5 + currentM1 * 0.38;
+
+    if (envMode === 'SPACE') {
+      p.stroke(140, 190, 255, 140); p.strokeWeight(0.9);
+      p.line(cx, cy, x1, y1); p.line(x1, y1, x2, y2);
+
+      // 메인 피벗: 8방향 별
+      p.stroke(190, 225, 255, 210); p.strokeWeight(0.9);
+      for (let i = 0; i < 4; i++) {
+        const a = i * Math.PI / 4;
+        p.line(cx + Math.cos(a) * 2.5, cy + Math.sin(a) * 2.5,
+               cx + Math.cos(a) * 9,   cy + Math.sin(a) * 9);
+      }
+      p.noFill(); p.stroke(180, 220, 255, 60); p.strokeWeight(0.7);
+      p.circle(cx, cy, 20);
+      p.noStroke(); p.fill(210, 235, 255, 230); p.circle(cx, cy, 3.5);
+
+      // 미드 조인트: 질량 비례 십자
+      const cr = j1s * 0.5;
+      p.stroke(170, 215, 255, 190); p.strokeWeight(0.8);
+      for (let i = 0; i < 4; i++) {
+        const a = i * Math.PI / 2;
+        p.line(x1 + Math.cos(a)*cr*0.4, y1 + Math.sin(a)*cr*0.4,
+               x1 + Math.cos(a)*cr,      y1 + Math.sin(a)*cr);
+      }
+      p.noStroke(); p.fill(200, 230, 255, 210); p.circle(x1, y1, cr * 0.55);
+
+    } else if (envMode === 'WATER') {
+      p.stroke(30, 155, 175, 190); p.strokeWeight(2.0);
+      p.line(cx, cy, x1, y1); p.line(x1, y1, x2, y2);
+
+      // 메인 피벗: 버블
+      p.noFill();
+      p.stroke(45, 195, 210, 130); p.strokeWeight(1.4); p.circle(cx, cy, 22);
+      p.stroke(45, 195, 210,  70); p.strokeWeight(0.8); p.circle(cx, cy, 34);
+      p.noStroke(); p.fill(65, 210, 220, 180); p.circle(cx, cy, 8);
+      p.fill(200, 245, 255, 120); p.circle(cx - 2, cy - 2, 3);
+
+      // 미드 조인트: 질량 비례 버블
+      p.noFill();
+      p.stroke(45, 195, 210, 110); p.strokeWeight(1.1); p.circle(x1, y1, j1s * 1.6);
+      p.noStroke(); p.fill(65, 210, 220, 170); p.circle(x1, y1, j1s * 0.65);
+      p.fill(200, 245, 255, 110); p.circle(x1 - 1.5, y1 - 1.5, 2.5);
+
+    } else {
+      // EARTH
+      p.stroke(60, 80, 110, 180); p.strokeWeight(1.2);
+      p.line(cx, cy, x1, y1); p.line(x1, y1, x2, y2);
+      p.noStroke();
+      p.fill(120, 140, 160, 200); p.circle(cx, cy, 10);
+      p.fill(160, 180, 200, 200); p.circle(x1, y1, j1s);
+    }
+  }
 
   // ── 조준 화살표 ──────────────────────────────────────────────────────────
   function drawAimArrow(p, bx, by) {
@@ -226,10 +332,9 @@ new p5(function(p) {
       energy = Math.max(0, energy - 0.08);
 
     } else {
-      // CHARGE RELEASE
-      timeScale = 1.0 + chargeLevel * 1.5;
-      const mul = 2.0 + chargeLevel * 7.0;
-      applyImpulse(mx, my, mul, 0.0, p);
+      // CHARGE RELEASE — 거리 무관 파워샷
+      timeScale = 1.0 + chargeLevel * 2.5;   // 최대 3.5× 속도 버스트
+      applyChargeImpulse(mx, my, chargeLevel, p);
       soundChargeRelease();
       addRings(mx, my, GOLD[0], GOLD[1], GOLD[2], 6, 225);
       spawnParticles(p, mx, my, GOLD[0], GOLD[1], GOLD[2],
