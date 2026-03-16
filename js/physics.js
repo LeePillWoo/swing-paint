@@ -7,7 +7,7 @@ export let a1, a2, a1v, a2v;
 const ENV = {
   EARTH: { g: 350, damp: 0.02  },  // 공기 저항, 자연스럽게 서서히 감속
   SPACE: { g:   8, damp: 0.0   },  // 무중력, 마찰 없음 — 영원히 회전
-  WATER: { g: 120, damp: 0.85  },  // 부력+점성 — 묵직하게 감속
+  WATER: { g: 100, damp: 0.30  },  // 부력+점성 — 선형 감쇠는 줄이고 속도²저항으로 보완
 };
 
 export let envMode  = 'SPACE';
@@ -108,10 +108,19 @@ export function stepRK4(dt) {
   a1v += (k1b+2*k2b+2*k3b+k4b)*dt/6;
   a2  += (k1c+2*k2c+2*k3c+k4c)*dt/6;
   a2v += (k1d+2*k2d+2*k3d+k4d)*dt/6;
-  // 환경 점성 감쇠
+  // 선형 감쇠 (공기·수중 공통)
   const df = Math.max(0, 1 - currentDamp * dt);
   a1v *= df;
   a2v *= df;
+  // 수중 저항: 고속=속도²저항, 저속=점착성 추가 감쇠
+  if (envMode === 'WATER') {
+    a1v -= a1v * Math.abs(a1v) * 0.004 * dt;
+    a2v -= a2v * Math.abs(a2v) * 0.004 * dt;
+    // 일정 속도 이하로 떨어지면 점착 저항으로 빠르게 소멸
+    const STICK = 0.5;
+    if (Math.abs(a1v) < STICK) a1v *= (1 - 0.055 * dt / 0.016);
+    if (Math.abs(a2v) < STICK) a2v *= (1 - 0.055 * dt / 0.016);
+  }
 }
 
 // 패턴 모드: 타겟 각도로 스프링-댐퍼 힘 적용

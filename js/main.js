@@ -29,8 +29,9 @@ new p5(function(p) {
   // 에너지 시스템
   let energy = 1.0;           // 0.0 ~ 1.0
 
-  // 멜로디: a2v 부호 전환 감지용
-  let prevA2vSign = 0;
+  // 멜로디: a2v 부호 전환 감지용 + 고속 회전 무음 방지 타이머
+  let prevA2vSign  = 0;
+  let soundTimer   = 0;   // 프레임 카운터 — 너무 오래 무음이면 강제 재생
 
   // ── UI 버튼 콜백 ─────────────────────────────────────────────────────────
   onMirrorClick(() => setMirrorActive(toggleMirror()));
@@ -144,10 +145,27 @@ new p5(function(p) {
 
     const pos = getPos();  // 서브스텝 종료 후 최종 위치
 
-    // ── 멜로디: a2v 부호 전환 시 음계 재생 ───────────────────────────────
-    const curSign = Math.sign(a2v);
-    if (prevA2vSign !== 0 && curSign !== prevA2vSign && mode === 'idle') {
-      soundNote(a2);
+    // ── 멜로디: 방향 전환 + 고속 완전회전 무음 방지 ─────────────────────
+    const curSign  = Math.sign(a2v);
+    const absA2v   = Math.abs(a2v);
+    const moving   = absA2v > 0.18;           // 정지에 가까우면 소리 없음
+    const spinning = absA2v > 2.5;            // 완전 회전 중 (360° 고속)
+    if (mode === 'idle') {
+      if (moving) {
+        const signChanged = prevA2vSign !== 0 && curSign !== prevA2vSign;
+        soundTimer++;
+        if (signChanged) {
+          // 방향 전환 → 즉시 통통 재생
+          soundNote(a2, absA2v);
+          soundTimer = 0;
+        } else if (spinning && soundTimer >= 24) {
+          // 고속 완전회전만 주기 재생 — 느린 원형 패턴은 해당 없음
+          soundNote(a2, absA2v);
+          soundTimer = 0;
+        }
+      } else {
+        soundTimer = 0;
+      }
     }
     prevA2vSign = curSign;
 
@@ -306,7 +324,8 @@ new p5(function(p) {
       // ── TAP: 짧은 클릭 → 임펄스 충격 ────────────────────────────────
       applyImpulse(cursorX, cursorY, 1.0, 0.45, p);
       const col = _palette();
-      soundTap(880 + p.random(-200, 200));
+      const TAP_NOTES = [659.25, 783.99, 880.00, 987.77, 1046.50];
+      soundTap(TAP_NOTES[Math.floor(p.random(TAP_NOTES.length))]);
       addRings(cursorX, cursorY, col[0], col[1], col[2], 2, 205);
       spawnParticles(p, cursorX, cursorY, col[0], col[1], col[2], 12, 5);
       energy = Math.max(0, energy - 0.08);
@@ -319,7 +338,8 @@ new p5(function(p) {
         timeScale = 1.0 + Math.min(flickMag * 0.12, 3.0);
         const col = _palette();
         const pos = getPos();
-        soundTap(660 + p.random(-150, 150));
+        const FLICK_NOTES = [329.63, 369.99, 392.00, 440.00, 493.88];
+        soundTap(FLICK_NOTES[Math.floor(p.random(FLICK_NOTES.length))]);
         addRings(pos.x2, pos.y2, col[0], col[1], col[2],
           Math.ceil(2 + flickMag * 0.25), 185);
         spawnParticles(p, pos.x2, pos.y2, col[0], col[1], col[2],
