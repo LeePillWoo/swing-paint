@@ -60,6 +60,12 @@ export function resetPendulum(p) {
   a2v = p.random(-0.8, 0.8);
 }
 
+// 드래그 모드: a1·a1v 를 외부에서 강제 지정 (커서 각도 추적용)
+export function overrideA1(angle, vel) {
+  a1  = angle;
+  a1v = vel;
+}
+
 // cx, cy 도 포함해 반환 (렌더링에서 사용)
 export function getPos() {
   const x1 = cx + L1 * Math.sin(a1);

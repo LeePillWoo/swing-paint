@@ -1,7 +1,6 @@
-import { DT, SUBSTEPS, PINK, MINT, GOLD, CYAN, VIOLET, ORANGE, LIME, RED, AZURE, BG } from './constants.js';
-import { ensureAudio, soundTap, soundChargeStart, soundChargeUpdate,
-         soundChargeRelease, stopChargeOsc, soundNote } from './audio.js';
-import { resetPendulum, getPos, stepRK4, applyImpulse, applyChargeImpulse,
+import { DT, SUBSTEPS, PINK, MINT, CYAN, VIOLET, ORANGE, LIME, RED, AZURE, BG } from './constants.js';
+import { ensureAudio, soundTap, soundNote } from './audio.js';
+import { resetPendulum, getPos, stepRK4, overrideA1, applyImpulse,
          a1, a1v, a2, a2v, L1, L2,
          cycleEnv, updatePhysicsEnv, envMode,
          cycleMass, massMode, currentM1, currentM2 } from './physics.js';
@@ -15,13 +14,17 @@ import { updateEnergy, getSpeedScale,
 
 new p5(function(p) {
 
-  let colorPhase = 0;
-  let mode        = 'idle';   // 'idle' | 'charging'
-  let pressTime   = 0;
-  let chargeLevel = 0;
-  let timeScale   = 1.0;
-  let cursorX     = 0;
-  let cursorY     = 0;
+  let colorPhase    = 0;
+  let mode          = 'idle';   // 'idle' | 'pending' | 'dragging'
+  let timeScale     = 1.0;
+  let cursorX       = 0;
+  let cursorY       = 0;
+  let pressX        = 0;   // 눌린 시작 좌표 (탭 vs 드래그 판별용)
+  let pressY        = 0;
+  let prevDragAngle = 0;
+  let dragVelSmooth = 0;
+
+  const DRAG_THRESHOLD = 18;  // px — 이 이상 움직이면 드래그로 확정
 
   // 에너지 시스템
   let energy = 1.0;           // 0.0 ~ 1.0
@@ -63,44 +66,43 @@ new p5(function(p) {
     colorPhase += 0.008;
 
     // 에너지 자연 회복 (초당 +15%)
-    if (mode !== 'charging') energy = Math.min(1.0, energy + 0.15 / 60);
+    energy = Math.min(1.0, energy + 0.15 / 60);
 
-    // 타임스케일 (충전 슬로우모션 + 해제 버스트)
-    if (mode === 'charging') {
-      chargeLevel = Math.min((p.millis() - pressTime) / 3000, 1.0);
-      timeScale   = p.lerp(timeScale, 0.06, 0.07);
-      soundChargeUpdate(chargeLevel);
-    } else {
-      const rate = timeScale > 1.0 ? 0.04 : 0.06;
-      timeScale  = p.lerp(timeScale, 1.0, rate);
-    }
+    // 타임스케일 버스트 감쇠 (플릭 릴리즈 후 복귀)
+    const rate = timeScale > 1.0 ? 0.04 : 0.06;
+    timeScale  = p.lerp(timeScale, 1.0, rate);
 
     // ── 트레일 색·폭 (서브스텝 루프 전 확정) ─────────────────────────────
-    const ct = (Math.sin(colorPhase) + 1) / 2;   // bob2 렌더용 유지
+    // 8색 사이버 사이클
     let tr, tg, tb, tw;
-    if (mode === 'charging') {
-      tr = p.lerp(GOLD[0], 255, chargeLevel);
-      tg = p.lerp(GOLD[1],  40, chargeLevel);
-      tb = p.lerp(GOLD[2],   0, chargeLevel);
-      tw = p.lerp(1.4, 6.5, chargeLevel);
-    } else {
-      // 8색 사이버 사이클
-      const PALETTE = [CYAN, VIOLET, PINK, MINT, ORANGE, LIME, RED, AZURE];
-      const cycleT  = (colorPhase % (Math.PI * 2)) / (Math.PI * 2);
-      const seg     = Math.floor(cycleT * 8) % 8;
-      const st      = (cycleT * 8) % 1;
-      const c0 = PALETTE[seg], c1 = PALETTE[(seg + 1) % 8];
-      tr = p.lerp(c0[0], c1[0], st);
-      tg = p.lerp(c0[1], c1[1], st);
-      tb = p.lerp(c0[2], c1[2], st);
-      // 질량 모드별 선 굵기·잔상 속도
-      if      (massMode === 'IRON')    { tw = 2.2; }
-      else if (massMode === 'FEATHER') { tw = 0.8; }
-      else                             { tw = 1.5; }
-    }
+    const PALETTE = [CYAN, VIOLET, PINK, MINT, ORANGE, LIME, RED, AZURE];
+    const cycleT  = (colorPhase % (Math.PI * 2)) / (Math.PI * 2);
+    const seg     = Math.floor(cycleT * 8) % 8;
+    const st      = (cycleT * 8) % 1;
+    const c0 = PALETTE[seg], c1 = PALETTE[(seg + 1) % 8];
+    tr = p.lerp(c0[0], c1[0], st);
+    tg = p.lerp(c0[1], c1[1], st);
+    tb = p.lerp(c0[2], c1[2], st);
+    if      (massMode === 'IRON')    { tw = 2.2; }
+    else if (massMode === 'FEATHER') { tw = 0.8; }
+    else                             { tw = 1.5; }
 
     // 질량 모드별 잔상 페이드 배율 (IRON=긴 잔상, FEATHER=짧은 잔상)
     const trailFade = massMode === 'IRON' ? 0.5 : massMode === 'FEATHER' ? 2.2 : 1.0;
+
+    // ── 드래그: 커서 각도 추적 + 각속도 계산 ─────────────────────────────
+    // pending(눌림) 상태부터 추적 시작 — dragging 확정 전에도 velocity 축적
+    let targetDragAngle = 0;
+    if (mode === 'dragging' || mode === 'pending') {
+      const pos0 = getPos();
+      targetDragAngle = Math.atan2(cursorX - pos0.cx, cursorY - pos0.cy);
+      let da = targetDragAngle - prevDragAngle;
+      if (da >  Math.PI) da -= Math.PI * 2;
+      if (da < -Math.PI) da += Math.PI * 2;
+      // 60fps 기준 각속도 (rad/s) → 스무딩
+      dragVelSmooth = dragVelSmooth * 0.72 + da * 60 * 0.28;
+      prevDragAngle = targetDragAngle;
+    }
 
     // ── 물리 적분 + 서브스텝마다 궤적 누적 ───────────────────────────────
     // DT×SUBSTEPS = 0.008×4 = 0.032 → 기존 0.016×2 와 동일한 시뮬속도 유지
@@ -111,7 +113,10 @@ new p5(function(p) {
     let cometTick = 0;
 
     for (let i = 0; i < SUBSTEPS; i++) {
+      // 드래그 중: a1을 커서 각도로 강제 고정 (사전·사후 둘다 적용)
+      if (mode === 'dragging') overrideA1(targetDragAngle, dragVelSmooth);
       stepRK4(DT * timeScale * spd);
+      if (mode === 'dragging') overrideA1(targetDragAngle, dragVelSmooth);
       const sp = getPos();
 
       // 코맷: 서브스텝 2회 중 1회만 push → 간격 2배
@@ -149,18 +154,7 @@ new p5(function(p) {
     drawStructure(p, pos);
 
     // ── bob2 (질량 모드별) ────────────────────────────────────────────────
-    if (mode === 'charging') {
-      const gs = 14 + chargeLevel * 44;
-      p.noStroke();
-      p.fill(255, 170,   0, chargeLevel *  55); p.circle(pos.x2, pos.y2, gs * 3.2);
-      p.fill(255, 210,  60, chargeLevel * 110); p.circle(pos.x2, pos.y2, gs * 1.5);
-      p.fill(255, 255, 200, 215);               p.circle(pos.x2, pos.y2, gs * 0.5);
-    } else {
-      drawBob2(p, pos);
-    }
-
-    // ── 조준 화살표 (충전 중) ─────────────────────────────────────────────
-    if (mode === 'charging') drawAimArrow(p, pos.x2, pos.y2);
+    drawBob2(p, pos);
 
     // ── Telemetry HUD ─────────────────────────────────────────────────────
     renderHUD(p, a1, a2, a1v, a2v, L1, L2, currentM1, currentM2, massMode);
@@ -275,75 +269,60 @@ new p5(function(p) {
     }
   }
 
-  // ── 조준 화살표 ──────────────────────────────────────────────────────────
-  function drawAimArrow(p, bx, by) {
-    const dx = bx - cursorX, dy = by - cursorY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 10) return;
-
-    const nx = dx / dist, ny = dy / dist;
-    const len = 55 + chargeLevel * 45;
-    const ex = bx + nx * len, ey = by + ny * len;
-
-    p.push();
-    p.stroke(255, 255, 255, 55 + chargeLevel * 90);
-    p.strokeWeight(1.2);
-    p.drawingContext.setLineDash([6, 5]);
-    p.line(cursorX, cursorY, ex, ey);
-    p.drawingContext.setLineDash([]);
-    p.pop();
-
-    const hs    = 8 + chargeLevel * 6;
-    const angle = Math.atan2(ny, nx);
-    p.push();
-    p.translate(ex, ey);
-    p.rotate(angle);
-    p.noStroke();
-    p.fill(255, 255, 255, 120 + chargeLevel * 110);
-    p.triangle(hs, 0, -hs * 0.6, hs * 0.55, -hs * 0.6, -hs * 0.55);
-    p.pop();
+  // ── 인터랙션 공통 ────────────────────────────────────────────────────────
+  function _palette() {
+    const PALETTE = [CYAN, VIOLET, PINK, MINT, ORANGE, LIME, RED, AZURE];
+    const cycleT  = (colorPhase % (Math.PI * 2)) / (Math.PI * 2);
+    return PALETTE[Math.floor(cycleT * 8) % 8];
   }
 
-  // ── 인터랙션 공통 ────────────────────────────────────────────────────────
   function onPressStart() {
     ensureAudio();
-    if (energy < 0.06) return;
-    mode        = 'charging';
-    pressTime   = p.millis();
-    chargeLevel = 0;
-    soundChargeStart();
+    mode  = 'pending';   // 아직 탭/드래그 미결정
+    pressX = cursorX;
+    pressY = cursorY;
+    const pos0 = getPos();
+    prevDragAngle = Math.atan2(cursorX - pos0.cx, cursorY - pos0.cy);
+    dragVelSmooth = 0;
   }
 
-  function onPressEnd(mx, my) {
-    if (mode !== 'charging') return;
-    const held = p.millis() - pressTime;
+  // 커서 이동 시 이동거리로 탭→드래그 전환 판별
+  function _checkDragThreshold() {
+    if (mode !== 'pending') return;
+    const dx = cursorX - pressX, dy = cursorY - pressY;
+    if (dx * dx + dy * dy > DRAG_THRESHOLD * DRAG_THRESHOLD) {
+      mode = 'dragging';
+    }
+  }
 
-    if (held < 260) {
-      // TAP
-      applyImpulse(mx, my, 1.0, 0.45, p);
-      const ct = (Math.sin(colorPhase) + 1) / 2;
-      const ir = p.lerp(PINK[0], MINT[0], ct);
-      const ig = p.lerp(PINK[1], MINT[1], ct);
-      const ib = p.lerp(PINK[2], MINT[2], ct);
+  function onPressEnd() {
+    if (mode === 'pending') {
+      // ── TAP: 짧은 클릭 → 임펄스 충격 ────────────────────────────────
+      applyImpulse(cursorX, cursorY, 1.0, 0.45, p);
+      const col = _palette();
       soundTap(880 + p.random(-200, 200));
-      addRings(mx, my, ir, ig, ib, 2, 205);
-      spawnParticles(p, mx, my, ir, ig, ib, 12, 5);
-      stopChargeOsc();
+      addRings(cursorX, cursorY, col[0], col[1], col[2], 2, 205);
+      spawnParticles(p, cursorX, cursorY, col[0], col[1], col[2], 12, 5);
       energy = Math.max(0, energy - 0.08);
 
-    } else {
-      // CHARGE RELEASE — 거리 무관 파워샷
-      timeScale = 1.0 + chargeLevel * 2.5;   // 최대 3.5× 속도 버스트
-      applyChargeImpulse(mx, my, chargeLevel, p);
-      soundChargeRelease();
-      addRings(mx, my, GOLD[0], GOLD[1], GOLD[2], 6, 225);
-      spawnParticles(p, mx, my, GOLD[0], GOLD[1], GOLD[2],
-        Math.floor(12 + chargeLevel * 28), 4 + chargeLevel * 7);
-      energy = Math.max(0, energy - chargeLevel * 0.28);
+    } else if (mode === 'dragging') {
+      // ── FLICK: 드래그 후 릴리즈 → 각속도 주입 ────────────────────────
+      overrideA1(a1, dragVelSmooth);
+      const flickMag = Math.abs(dragVelSmooth);
+      if (flickMag > 0.5) {
+        timeScale = 1.0 + Math.min(flickMag * 0.12, 3.0);
+        const col = _palette();
+        const pos = getPos();
+        soundTap(660 + p.random(-150, 150));
+        addRings(pos.x2, pos.y2, col[0], col[1], col[2],
+          Math.ceil(2 + flickMag * 0.25), 185);
+        spawnParticles(p, pos.x2, pos.y2, col[0], col[1], col[2],
+          Math.floor(6 + flickMag * 1.8), 2 + flickMag * 0.4);
+        energy = Math.max(0, energy - Math.min(flickMag * 0.018, 0.22));
+      }
     }
 
-    mode        = 'idle';
-    chargeLevel = 0;
+    mode = 'idle';
   }
 
   // ── 마우스 (데스크탑) ────────────────────────────────────────────────────
@@ -354,10 +333,11 @@ new p5(function(p) {
   };
   p.mouseMoved = p.mouseDragged = function() {
     cursorX = p.mouseX; cursorY = p.mouseY;
+    _checkDragThreshold();
   };
   p.mouseReleased = (event) => {
     if (isUITouch(event) && mode === 'idle') return;
-    onPressEnd(p.mouseX, p.mouseY);
+    onPressEnd();
   };
 
   // ── 터치 (모바일) ────────────────────────────────────────────────────────
@@ -383,12 +363,13 @@ new p5(function(p) {
       cursorX = p.touches[0].x;
       cursorY = p.touches[0].y;
     }
+    _checkDragThreshold();
     return false;
   };
 
   p.touchEnded = function(event) {
     if (isUITouch(event)) return true;
-    onPressEnd(cursorX, cursorY);
+    onPressEnd();
     return false;
   };
 
