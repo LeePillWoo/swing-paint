@@ -33,6 +33,10 @@ new p5(function(p) {
   let prevA2vSign  = 0;
   let soundTimer   = 0;   // 프레임 카운터 — 너무 오래 무음이면 강제 재생
 
+  // 자동 패턴 교란 (3분 무조작 시 랜덤 터치 시뮬)
+  const AUTO_NUDGE_MS = 3 * 60 * 1000;  // 3분
+  let lastInteractAt  = Date.now();
+
   // ── UI 버튼 콜백 ─────────────────────────────────────────────────────────
   onMirrorClick(() => setMirrorActive(toggleMirror()));
 
@@ -72,6 +76,18 @@ new p5(function(p) {
     // 타임스케일 버스트 감쇠 (플릭 릴리즈 후 복귀)
     const rate = timeScale > 1.0 ? 0.04 : 0.06;
     timeScale  = p.lerp(timeScale, 1.0, rate);
+
+    // ── 자동 패턴 교란 (3분 무조작) ──────────────────────────────────────
+    if (Date.now() - lastInteractAt >= AUTO_NUDGE_MS) {
+      lastInteractAt = Date.now();
+      // 화면 랜덤 위치에 임펄스 (중앙 근처 편향)
+      const nx = p.width  * p.random(0.2, 0.8);
+      const ny = p.height * p.random(0.2, 0.8);
+      applyImpulse(nx, ny, p.random(0.8, 1.6), 0.25, p);
+      const col = _palette();
+      addRings(nx, ny, col[0], col[1], col[2], 3, 160);
+      spawnParticles(p, nx, ny, col[0], col[1], col[2], 10, 4);
+    }
 
     // ── 트레일 색·폭 (서브스텝 루프 전 확정) ─────────────────────────────
     // 8색 사이버 사이클
@@ -302,6 +318,7 @@ new p5(function(p) {
 
   function onPressStart() {
     ensureAudio();
+    lastInteractAt = Date.now();  // 조작 감지 → 타이머 리셋
     mode  = 'pending';   // 아직 탭/드래그 미결정
     pressX = cursorX;
     pressY = cursorY;
