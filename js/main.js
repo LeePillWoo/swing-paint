@@ -115,7 +115,13 @@ new p5(function(p) {
     for (let i = 0; i < SUBSTEPS; i++) {
       // 드래그 중: a1을 커서 각도로 강제 고정 (사전·사후 둘다 적용)
       if (mode === 'dragging') overrideA1(targetDragAngle, dragVelSmooth);
-      stepRK4(DT * timeScale * spd);
+      const totalDt = DT * timeScale * spd;
+      const MAX_DT  = 0.018;
+      const subN    = Math.ceil(totalDt / MAX_DT);
+      const subDt   = totalDt / subN;
+      for (let s = 0; s < subN; s++) stepRK4(subDt);
+      // NaN 가드 — 수치 발산 시 리셋
+      if (!isFinite(a1v) || !isFinite(a2v)) resetPendulum(p);
       if (mode === 'dragging') overrideA1(targetDragAngle, dragVelSmooth);
       const sp = getPos();
 
@@ -344,7 +350,7 @@ new p5(function(p) {
   function isUITouch(event) {
     const el = event && event.target;
     return el && (el.tagName === 'BUTTON' || el.tagName === 'INPUT' ||
-                  el.closest('#env-panel, #style-panel, #slider-panel, #hud-toggle'));
+                  el.closest('#env-panel, #style-panel, #slider-panel, #ui-bar, #hud-toggle'));
   }
 
   p.touchStarted = function(event) {

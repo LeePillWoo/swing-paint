@@ -50,7 +50,7 @@
     #clock-time {
       font-family: 'Orbitron', 'Courier New', monospace;
       font-weight: 300;
-      font-size: 22px;
+      font-size: clamp(22px, 2.2vw, 52px);
       letter-spacing: 0.08em;
       line-height: 1;
       animation: neon-cycle 72s ease-in-out infinite;
@@ -64,7 +64,8 @@
     }
     #clock-date {
       font-family: 'Orbitron', 'Courier New', monospace;
-      font-weight: 300; font-size: 9px;
+      font-weight: 300;
+      font-size: clamp(9px, 0.85vw, 20px);
       letter-spacing: 0.16em; opacity: 0.55;
       animation: neon-cycle 72s ease-in-out infinite;
     }
@@ -287,11 +288,72 @@
       animation: pulse-energy 0.5s ease-in-out infinite alternate;
     }
 
-    /* ── 모바일 ──────────────────────────────────────────────── */
-    @media (max-width: 480px) {
-      #env-panel, #style-panel { width: 88px !important; }
+    /* ── 소형 세로 모바일 (480px 이하 portrait) ─────────────── */
+    @media (max-width: 480px) and (orientation: portrait) {
+      #env-panel, #style-panel { width: 88px; }
       .mode-btn { font-size: 7px; padding: 3px 6px; }
       input[type=range] { width: 82px; }
+    }
+
+    /* ── 가로 화면 버튼 1열 (landscape 600px~1199px) ─────────
+       슬라이더는 겹침 방지를 위해 600px~999px에서는 2행 유지,
+       1000px 이상부터 1행으로 전환                            */
+    @media (orientation: landscape) and (min-width: 600px) and (max-width: 1199px) {
+      #env-panel,
+      #style-panel {
+        flex-direction: row;
+        width: auto;
+        justify-content: center;
+        gap: 6px;
+      }
+      #env-panel .mode-btn,
+      #style-panel .mode-btn { width: auto; }
+    }
+    @media (orientation: landscape) and (min-width: 1000px) and (max-width: 1199px) {
+      #slider-panel {
+        flex-direction: row;
+        gap: 10px;
+        align-items: center;
+      }
+    }
+
+    /* ── 와이드 데스크탑 (1200px+): 왼쪽 사이드바 6행 컬럼 ── */
+    @media (min-width: 1200px) {
+      #ui-bar {
+        position: fixed;
+        left: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 10;
+        pointer-events: none;
+      }
+      /* 자식 패널들: fixed 해제 → bar 내 흐름으로 */
+      #env-panel,
+      #slider-panel,
+      #style-panel {
+        position: static;
+        width: 158px;
+        flex-direction: column;
+        justify-content: space-between;
+        transform: none;
+        pointer-events: auto;
+      }
+      #env-panel .mode-btn,
+      #style-panel .mode-btn { width: 100%; }
+      /* 슬라이더 패널: column, 레이블이 패널 안에 들어오도록 크기 조정 */
+      #slider-panel {
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px 10px;
+      }
+      #slider-panel .slide-label {
+        min-width: 22px;
+        font-size: 6.5px;
+      }
+      #slider-panel input[type=range] { width: 82px; }
     }
   </style>
 </head>
@@ -311,34 +373,39 @@
     <button class="mode-btn" id="btn-hud">HUD</button>
   </div>
 
-  <!-- ENV + MASS (좌측 하단) -->
-  <div id="env-panel" class="ui-panel">
-    <button class="mode-btn env-btn space" id="btn-env">SPACE</button>
-    <button class="mode-btn mass-btn standard" id="btn-mass">STANDARD</button>
-  </div>
+  <!-- 하단 UI 바 (기본: fixed 3분할 / 와이드: 왼쪽 사이드바) -->
+  <div id="ui-bar">
 
-  <!-- 슬라이더 (하단 중앙) -->
-  <div id="slider-panel" class="ui-panel">
-    <div class="panel-row slider-row">
-      <span class="slide-label">SLOW</span>
-      <div class="slider-wrap">
-        <input type="range" id="speed-slider" min="0" max="100" value="50" />
-      </div>
-      <span class="slide-label">FAST</span>
+    <!-- ENV + MASS (좌측 하단) -->
+    <div id="env-panel" class="ui-panel">
+      <button class="mode-btn env-btn space" id="btn-env">SPACE</button>
+      <button class="mode-btn mass-btn standard" id="btn-mass">STANDARD</button>
     </div>
-    <div class="panel-row slider-row">
-      <span class="slide-label">SHORT</span>
-      <div class="slider-wrap">
-        <input type="range" id="trail-slider" min="0" max="100" step="2" value="50" />
-      </div>
-      <span class="slide-label">LONG</span>
-    </div>
-  </div>
 
-  <!-- MIRROR + STYLE (우측 하단) -->
-  <div id="style-panel" class="ui-panel">
-    <button class="mode-btn mirror-btn" id="btn-mirror">MIRROR</button>
-    <button class="mode-btn trail-btn glow" id="btn-style">GLOW</button>
+    <!-- 슬라이더 (하단 중앙) -->
+    <div id="slider-panel" class="ui-panel">
+      <div class="panel-row slider-row">
+        <span class="slide-label">SLOW</span>
+        <div class="slider-wrap">
+          <input type="range" id="speed-slider" min="0" max="100" value="50" />
+        </div>
+        <span class="slide-label">FAST</span>
+      </div>
+      <div class="panel-row slider-row">
+        <span class="slide-label">SHORT</span>
+        <div class="slider-wrap">
+          <input type="range" id="trail-slider" min="0" max="100" step="2" value="50" />
+        </div>
+        <span class="slide-label">LONG</span>
+      </div>
+    </div>
+
+    <!-- MIRROR + STYLE (우측 하단) -->
+    <div id="style-panel" class="ui-panel">
+      <button class="mode-btn mirror-btn" id="btn-mirror">MIRROR</button>
+      <button class="mode-btn trail-btn glow" id="btn-style">GLOW</button>
+    </div>
+
   </div>
 
   <!-- 에너지 바 -->
