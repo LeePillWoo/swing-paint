@@ -1,11 +1,12 @@
-import { DT, SUBSTEPS, PINK, MINT, GOLD, BG } from './constants.js';
+import { DT, SUBSTEPS, PINK, MINT, GOLD, CYAN, VIOLET, BG } from './constants.js';
 import { ensureAudio, soundTap, soundChargeStart, soundChargeUpdate,
          soundChargeRelease, stopChargeOsc, soundNote } from './audio.js';
 import { resetPendulum, getPos, stepRK4, applyImpulse,
          a1, a1v, a2, a2v, L1, L2 } from './physics.js';
 import { renderHUD, setHudVisible } from './hud.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
-         addRings, spawnParticles, cycleTrailStyle, toggleMirror } from './effects.js';
+         addRings, spawnParticles, cycleTrailStyle, toggleMirror,
+         trailStyle } from './effects.js';
 import { updateEnergy, getSpeedScale,
          setMirrorActive, setStyleLabel, setHudActive,
          onMirrorClick, onStyleClick, onHudClick } from './ui.js';
@@ -68,21 +69,8 @@ new p5(function(p) {
       timeScale  = p.lerp(timeScale, 1.0, rate);
     }
 
-    // 물리 적분 (timeScale × 속도 슬라이더 배율)
-    const spd = getSpeedScale();
-    for (let i = 0; i < SUBSTEPS; i++) stepRK4(DT * timeScale * spd);
-
-    const pos = getPos();
-    const ct  = (Math.sin(colorPhase) + 1) / 2;
-
-    // ── 멜로디: a2v 부호 전환 시 음계 재생 ───────────────────────────────
-    const curSign = Math.sign(a2v);
-    if (prevA2vSign !== 0 && curSign !== prevA2vSign && mode === 'idle') {
-      soundNote(a2);
-    }
-    prevA2vSign = curSign;
-
-    // ── 트레일 색·폭 결정 ─────────────────────────────────────────────────
+    // ── 트레일 색·폭 (서브스텝 루프 전 확정) ─────────────────────────────
+    const ct = (Math.sin(colorPhase) + 1) / 2;   // bob2 렌더용 유지
     let tr, tg, tb, tw;
     if (mode === 'charging') {
       tr = p.lerp(GOLD[0], 255, chargeLevel);
@@ -90,12 +78,55 @@ new p5(function(p) {
       tb = p.lerp(GOLD[2],   0, chargeLevel);
       tw = p.lerp(1.4, 6.5, chargeLevel);
     } else {
-      tr = p.lerp(PINK[0], MINT[0], ct);
-      tg = p.lerp(PINK[1], MINT[1], ct);
-      tb = p.lerp(PINK[2], MINT[2], ct);
+      // 4색 사이버 사이클: PINK → CYAN → MINT → VIOLET → PINK
+      const PALETTE = [PINK, CYAN, MINT, VIOLET];
+      const cycleT  = (colorPhase % (Math.PI * 2)) / (Math.PI * 2);
+      const seg     = Math.floor(cycleT * 4) % 4;
+      const st      = (cycleT * 4) % 1;
+      const c0 = PALETTE[seg], c1 = PALETTE[(seg + 1) % 4];
+      tr = p.lerp(c0[0], c1[0], st);
+      tg = p.lerp(c0[1], c1[1], st);
+      tb = p.lerp(c0[2], c1[2], st);
       tw = 1.5;
     }
-    pushTrail(pos.x2, pos.y2, tr, tg, tb, tw);
+
+    // ── 물리 적분 + 서브스텝마다 궤적 누적 ───────────────────────────────
+    // DT×SUBSTEPS = 0.008×4 = 0.032 → 기존 0.016×2 와 동일한 시뮬속도 유지
+    const spd     = getSpeedScale();
+    const isComet = trailStyle === 'comet';
+    const fillPx  = isComet ? 10 : 5;  // 코맷은 도트 간격 2배
+    let lp = getPos();
+    let cometTick = 0;
+
+    for (let i = 0; i < SUBSTEPS; i++) {
+      stepRK4(DT * timeScale * spd);
+      const sp = getPos();
+
+      // 코맷: 서브스텝 2회 중 1회만 push → 간격 2배
+      if (isComet && (++cometTick % 2 !== 0)) { lp = sp; continue; }
+
+      // 이동거리 초과 시 선형 보간으로 빈틈 채움
+      const ddx = sp.x2 - lp.x2, ddy = sp.y2 - lp.y2;
+      const gap = Math.sqrt(ddx * ddx + ddy * ddy);
+      if (gap > fillPx) {
+        const n = Math.min(Math.ceil(gap / fillPx) - 1, 12);
+        for (let j = 1; j <= n; j++) {
+          const t = j / (n + 1);
+          pushTrail(lp.x2 + ddx * t, lp.y2 + ddy * t, tr, tg, tb, tw);
+        }
+      }
+      pushTrail(sp.x2, sp.y2, tr, tg, tb, tw);
+      lp = sp;
+    }
+
+    const pos = getPos();  // 서브스텝 종료 후 최종 위치
+
+    // ── 멜로디: a2v 부호 전환 시 음계 재생 ───────────────────────────────
+    const curSign = Math.sign(a2v);
+    if (prevA2vSign !== 0 && curSign !== prevA2vSign && mode === 'idle') {
+      soundNote(a2);
+    }
+    prevA2vSign = curSign;
 
     // ── 렌더 ─────────────────────────────────────────────────────────────
     renderTrail(p, pos.cx, pos.cy);

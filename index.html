@@ -4,10 +4,61 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Swing Paint</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #00050a; overflow: hidden; width: 100vw; height: 100vh; }
     canvas { display: block; }
+
+    /* ── 시계 디스플레이 (좌상단 소형) ─────────────────────── */
+    #clock-display {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    #clock-time {
+      font-family: 'Orbitron', 'Courier New', monospace;
+      font-weight: 300;
+      font-size: 22px;
+      color: rgba(0, 221, 255, 0.82);
+      letter-spacing: 0.08em;
+      text-shadow:
+        0 0 12px rgba(0, 221, 255, 0.7),
+        0 0 28px rgba(0, 221, 255, 0.3);
+      line-height: 1;
+    }
+
+    #clock-time .sep {
+      display: inline-block;
+      animation: blink-sep 1s step-end infinite;
+    }
+    @keyframes blink-sep {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+
+    #clock-divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg,
+        rgba(0, 221, 255, 0.4),
+        transparent);
+    }
+
+    #clock-date {
+      font-family: 'Orbitron', 'Courier New', monospace;
+      font-weight: 300;
+      font-size: 9px;
+      color: rgba(0, 221, 255, 0.45);
+      letter-spacing: 0.16em;
+      text-shadow: 0 0 10px rgba(0, 221, 255, 0.4);
+    }
 
     /* ── 모드 버튼 패널 ──────────────────────────────────────── */
     #mode-panel {
@@ -75,7 +126,6 @@
       cursor: pointer;
       position: relative;
     }
-    /* 중간 눈금 — pseudo로 표현 어려우므로 래퍼에서 처리 */
     #speed-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
       width: 12px;
@@ -103,7 +153,6 @@
       background: rgba(255,255,255,0.10);
       border-radius: 2px;
     }
-    /* 슬라이더 중앙 눈금 마커 래퍼 */
     #speed-track-wrap {
       position: relative;
       display: flex;
@@ -144,6 +193,15 @@
   </style>
 </head>
 <body>
+  <!-- 시계 디스플레이 -->
+  <div id="clock-display">
+    <div id="clock-time">
+      <span id="ct-hh">00</span><span class="sep">:</span><span id="ct-mm">00</span><span class="sep">:</span><span id="ct-ss">00</span>
+    </div>
+    <div id="clock-divider"></div>
+    <div id="clock-date">MON&nbsp;&nbsp;2026.01.01</div>
+  </div>
+
   <!-- 모드 버튼 -->
   <div id="mode-panel">
     <button class="mode-btn" id="btn-mirror">MIRROR</button>
@@ -162,6 +220,34 @@
 
   <!-- 에너지 바 -->
   <div id="energy-wrap"><div id="energy-fill"></div></div>
+
+  <script>
+    (function () {
+      const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+      const elHH   = document.getElementById('ct-hh');
+      const elMM   = document.getElementById('ct-mm');
+      const elSS   = document.getElementById('ct-ss');
+      const elDate = document.getElementById('clock-date');
+
+      function pad(n) { return String(n).padStart(2, '0'); }
+
+      function tick() {
+        const now = new Date();
+        elHH.textContent = pad(now.getHours());
+        elMM.textContent = pad(now.getMinutes());
+        elSS.textContent = pad(now.getSeconds());
+
+        const dy = DAYS[now.getDay()];
+        const yr = now.getFullYear();
+        const mo = pad(now.getMonth() + 1);
+        const da = pad(now.getDate());
+        elDate.textContent = `${dy}\u00a0\u00a0${yr}.${mo}.${da}`;
+      }
+
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
   <script type="module" src="js/main.js"></script>

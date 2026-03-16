@@ -1,4 +1,5 @@
-import { TRAIL_MAX, TRAIL_FADE } from './constants.js';
+import { TRAIL_MAX, TRAIL_MAX_COMET, TRAIL_MAX_GLOW,
+         TRAIL_FADE_LINE, TRAIL_FADE_COMET, TRAIL_FADE_GLOW } from './constants.js';
 
 export let trail     = [];
 export let rings     = [];
@@ -18,7 +19,7 @@ export function cycleTrailStyle() {
 
 export function toggleMirror() {
   mirrorMode = !mirrorMode;
-  trail.length = 0; // 전환 시 잔상 초기화
+  trail.length = 0;
   return mirrorMode;
 }
 
@@ -43,16 +44,20 @@ export function spawnParticles(p, x, y, rc, gc, bc, n, spd) {
   }
 }
 
+// 모드별 최대 버퍼 크기로 제한
 export function pushTrail(x, y, r, g, b, w) {
   trail.push({ x, y, alpha: 1.0, r, g, b, w });
-  const max = mirrorMode ? TRAIL_MAX_MIRROR : TRAIL_MAX;
+  let max;
+  if      (mirrorMode)          max = TRAIL_MAX_MIRROR;
+  else if (trailStyle === 'glow')  max = TRAIL_MAX_GLOW;
+  else if (trailStyle === 'comet') max = TRAIL_MAX_COMET;
+  else                             max = TRAIL_MAX;
   if (trail.length > max) trail.splice(0, trail.length - max);
 }
 
 export function clearTrail() { trail = []; }
 
 // ── 미러 좌표 계산 ───────────────────────────────────────────────────────────
-// pivotX, pivotY 기준 4방향 대칭
 function mirrorPts(x, y, px, py) {
   return [
     [x, y],
@@ -69,41 +74,87 @@ export function renderTrail(p, pivotX, pivotY) {
   else                             renderGlowTrail(p, pivotX, pivotY);
 }
 
+// 글로우: 연속 세그먼트 테이퍼 스트로크 — 머리(최신)는 굵고 밝고, 꼬리(오래됨)는 얇고 희미
 function renderGlowTrail(p, pivotX, pivotY) {
-  p.noStroke();
+  // 페이드 업데이트
   for (let i = trail.length - 1; i >= 0; i--) {
-    const pt = trail[i];
-    pt.alpha -= TRAIL_FADE;
-    if (pt.alpha <= 0) { trail.splice(i, 1); continue; }
-    const a = pt.alpha, w = pt.w;
-    const pts = mirrorMode ? mirrorPts(pt.x, pt.y, pivotX, pivotY) : [[pt.x, pt.y]];
-    for (const [px, py] of pts) {
-      p.fill(pt.r, pt.g, pt.b, a *  28); p.circle(px, py, w * 14);
-      p.fill(pt.r, pt.g, pt.b, a *  80); p.circle(px, py, w * 5.5);
-      p.fill(pt.r, pt.g, pt.b, a * 200); p.circle(px, py, w * 1.8);
+    trail[i].alpha -= TRAIL_FADE_GLOW;
+    if (trail[i].alpha <= 0.008) { trail.splice(i, 1); }
+  }
+  if (trail.length < 2) return;
+
+  const n     = trail.length;
+  const iters = mirrorMode ? 4 : 1;
+
+  p.noFill();
+  for (let m = 0; m < iters; m++) {
+    for (let i = 1; i < n; i++) {
+      const cur  = trail[i];
+      const prev = trail[i - 1];
+      if ((cur.x - prev.x) ** 2 + (cur.y - prev.y) ** 2 > 9000) continue;
+
+      const a     = Math.min(cur.alpha, prev.alpha);
+      const taper = i / n;   // 0 = oldest/thin → 1 = newest/thick
+      const w     = cur.w;
+
+      let x1 = prev.x, y1 = prev.y, x2 = cur.x, y2 = cur.y;
+      if (m === 1 || m === 3) { x1 = 2 * pivotX - x1; x2 = 2 * pivotX - x2; }
+      if (m === 2 || m === 3) { y1 = 2 * pivotY - y1; y2 = 2 * pivotY - y2; }
+
+      // 외부 확산 헤일로 (앞쪽 50% 구간만)
+      if (taper > 0.5) {
+        p.stroke(cur.r, cur.g, cur.b, a * 8 * taper);
+        p.strokeWeight(w * taper * 22);
+        p.line(x1, y1, x2, y2);
+      }
+      // 중간 글로우
+      p.stroke(cur.r, cur.g, cur.b, a * 40 * taper + 8);
+      p.strokeWeight(w * (1.0 + taper * 8));
+      p.line(x1, y1, x2, y2);
+      // 코어 라인
+      p.stroke(cur.r, cur.g, cur.b, a * 200);
+      p.strokeWeight(w * (0.5 + taper * 2.5));
+      p.line(x1, y1, x2, y2);
+    }
+  }
+
+  // 헤드 글로우 — 현재 끝점 발광
+  p.noStroke();
+  const tip = trail[n - 1];
+  if (tip.alpha > 0.08) {
+    const w = tip.w, a = tip.alpha;
+    const tipPts = mirrorMode ? mirrorPts(tip.x, tip.y, pivotX, pivotY) : [[tip.x, tip.y]];
+    for (const [px, py] of tipPts) {
+      p.fill(tip.r, tip.g, tip.b, a * 30);  p.circle(px, py, w * 20);
+      p.fill(tip.r, tip.g, tip.b, a * 110); p.circle(px, py, w * 7);
+      p.fill(255, 255, 255,       a * 185); p.circle(px, py, w * 2.5);
     }
   }
 }
 
+// 코맷: 2레이어 원, 중간 페이드
+// 외부 헤일로는 alpha > 0.25 일 때만
 function renderCometTrail(p, pivotX, pivotY) {
   p.noStroke();
   for (let i = trail.length - 1; i >= 0; i--) {
     const pt = trail[i];
-    pt.alpha -= TRAIL_FADE;
-    if (pt.alpha <= 0) { trail.splice(i, 1); continue; }
+    pt.alpha -= TRAIL_FADE_COMET;
+    if (pt.alpha <= 0.008) { trail.splice(i, 1); continue; }
     const a = pt.alpha, w = pt.w;
     const pts = mirrorMode ? mirrorPts(pt.x, pt.y, pivotX, pivotY) : [[pt.x, pt.y]];
     for (const [px, py] of pts) {
-      p.fill(pt.r, pt.g, pt.b, a * 100); p.circle(px, py, w * 7);
+      if (a > 0.25) {
+        p.fill(pt.r, pt.g, pt.b, a * 100); p.circle(px, py, w * 7);
+      }
       p.fill(pt.r, pt.g, pt.b, a * 240); p.circle(px, py, w * 2.2);
     }
   }
 }
 
+// 라인: 현재 유지 (가장 긴 잔상)
 function renderLineTrail(p, pivotX, pivotY) {
-  // 먼저 알파 감소 & 제거
   for (let i = trail.length - 1; i >= 0; i--) {
-    trail[i].alpha -= TRAIL_FADE;
+    trail[i].alpha -= TRAIL_FADE_LINE;
     if (trail[i].alpha <= 0) trail.splice(i, 1);
   }
   if (trail.length < 2) return;
@@ -113,7 +164,6 @@ function renderLineTrail(p, pivotX, pivotY) {
     for (let i = 1; i < trail.length; i++) {
       const cur  = trail[i];
       const prev = trail[i - 1];
-      // 큰 점프(리셋 직후) 스킵
       if ((cur.x - prev.x) ** 2 + (cur.y - prev.y) ** 2 > 9000) continue;
 
       let x1 = prev.x, y1 = prev.y;
