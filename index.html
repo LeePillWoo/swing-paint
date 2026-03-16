@@ -9,58 +9,17 @@
     body { background: #00050a; overflow: hidden; width: 100vw; height: 100vh; }
     canvas { display: block; }
 
-    /* ── 하단 메인 패널 ───────────────────────────────────────── */
-    #ui-panel {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      background: rgba(0,5,10,0.65);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 40px;
-      padding: 10px 28px;
-      backdrop-filter: blur(10px);
-      pointer-events: none;
-      user-select: none;
-    }
-    .pill {
-      font-family: 'Courier New', monospace;
-      font-size: 10px;
-      letter-spacing: 0.2em;
-      padding: 5px 16px;
-      border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.22);
-      transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
-    }
-    .pill.flash-tap     { color:#ff1493; border-color:#ff1493; box-shadow:0 0 14px #ff149366; }
-    .pill.active-charge { color:#ffaa00; border-color:#ffaa00; box-shadow:0 0 14px #ffaa0066; }
-    .sep { width:1px; height:14px; background:rgba(255,255,255,0.09); }
-    #charge-wrap {
-      width:64px; height:3px;
-      background:rgba(255,255,255,0.08);
-      border-radius:2px; overflow:hidden;
-      opacity:0; transition:opacity 0.2s;
-    }
-    #charge-fill {
-      height:100%; width:0%;
-      background:linear-gradient(90deg,#ff6600,#ffee00);
-      border-radius:2px;
-    }
-
     /* ── 모드 버튼 패널 ──────────────────────────────────────── */
     #mode-panel {
       position: fixed;
-      bottom: 82px;
+      bottom: 72px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
       gap: 7px;
       pointer-events: auto;
       user-select: none;
+      z-index: 10;
     }
     .mode-btn {
       font-family: 'Courier New', monospace;
@@ -77,15 +36,96 @@
       -webkit-tap-highlight-color: transparent;
       touch-action: manipulation;
     }
-    .mode-btn:hover      { color:rgba(255,255,255,0.55); border-color:rgba(255,255,255,0.18); }
-    .mode-btn.mode-on    { color:#00ddff; border-color:#00ddff; box-shadow:0 0 12px #00ddff44; }
-    .mode-btn.save-flash { color:#ffee00; border-color:#ffee00; box-shadow:0 0 12px #ffee0055; }
+    .mode-btn:hover   { color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.18); }
+    .mode-btn.mode-on { color: #00ddff; border-color: #00ddff; box-shadow: 0 0 12px #00ddff44; }
+
+    /* ── 속도 슬라이더 패널 ──────────────────────────────────── */
+    #speed-panel {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      background: rgba(0,5,10,0.55);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 30px;
+      padding: 9px 22px;
+      backdrop-filter: blur(10px);
+      pointer-events: auto;
+      user-select: none;
+      z-index: 10;
+    }
+    .speed-label {
+      font-family: 'Courier New', monospace;
+      font-size: 8px;
+      letter-spacing: 0.10em;
+      color: rgba(255,255,255,0.22);
+      white-space: nowrap;
+    }
+    #speed-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 130px;
+      height: 2px;
+      background: rgba(255,255,255,0.10);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      position: relative;
+    }
+    /* 중간 눈금 — pseudo로 표현 어려우므로 래퍼에서 처리 */
+    #speed-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #00ddff;
+      cursor: pointer;
+      box-shadow: 0 0 8px #00ddff99, 0 0 2px #fff;
+      transition: box-shadow 0.15s;
+    }
+    #speed-slider:active::-webkit-slider-thumb {
+      box-shadow: 0 0 14px #00ddffcc, 0 0 3px #fff;
+    }
+    #speed-slider::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: none;
+      background: #00ddff;
+      cursor: pointer;
+      box-shadow: 0 0 8px #00ddff99;
+    }
+    #speed-slider::-moz-range-track {
+      height: 2px;
+      background: rgba(255,255,255,0.10);
+      border-radius: 2px;
+    }
+    /* 슬라이더 중앙 눈금 마커 래퍼 */
+    #speed-track-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    #speed-track-wrap::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 1px;
+      height: 7px;
+      background: rgba(0, 221, 255, 0.30);
+      pointer-events: none;
+    }
 
     /* ── 에너지 바 (화면 최하단) ─────────────────────────────── */
     #energy-wrap {
       position: fixed;
       bottom: 0; left: 0;
-      width: 100%; height: 3px;
+      width: 100%; height: 2px;
       background: rgba(255,255,255,0.04);
       pointer-events: none;
     }
@@ -101,30 +141,6 @@
     @keyframes pulse-energy {
       from { opacity: 0.5; } to { opacity: 1; }
     }
-
-    /* ── 스코어 (상단 중앙) ─────────────────────────────────── */
-    #score-display {
-      position: fixed;
-      top: 28px; left: 50%;
-      transform: translateX(-50%);
-      font-family: 'Courier New', monospace;
-      font-size: 11px;
-      letter-spacing: 0.35em;
-      color: rgba(57,255,183,0.75);
-      text-shadow: 0 0 14px rgba(57,255,183,0.45);
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
-    }
-    #score-display.visible { opacity: 1; }
-    #score-display.score-pop {
-      animation: score-pop 0.25s ease-out;
-    }
-    @keyframes score-pop {
-      0%   { transform: translateX(-50%) scale(1); }
-      50%  { transform: translateX(-50%) scale(1.5); color: #fff; }
-      100% { transform: translateX(-50%) scale(1); }
-    }
   </style>
 </head>
 <body>
@@ -132,24 +148,20 @@
   <div id="mode-panel">
     <button class="mode-btn" id="btn-mirror">MIRROR</button>
     <button class="mode-btn" id="btn-style">GLOW</button>
-    <button class="mode-btn" id="btn-game">GAME</button>
-    <button class="mode-btn" id="btn-save">SAVE</button>
-    <button class="mode-btn" id="btn-pattern">PATTERN</button>
+    <button class="mode-btn" id="btn-hud">HUD</button>
   </div>
 
-  <!-- 기존 TAP / CHARGE 패널 -->
-  <div id="ui-panel">
-    <div class="pill" id="pill-tap">TAP</div>
-    <div class="sep"></div>
-    <div class="pill" id="pill-charge">CHARGE</div>
-    <div id="charge-wrap"><div id="charge-fill"></div></div>
+  <!-- 속도 슬라이더 -->
+  <div id="speed-panel">
+    <span class="speed-label">SLOW</span>
+    <div id="speed-track-wrap">
+      <input type="range" id="speed-slider" min="0" max="100" value="50" />
+    </div>
+    <span class="speed-label">FAST</span>
   </div>
 
   <!-- 에너지 바 -->
   <div id="energy-wrap"><div id="energy-fill"></div></div>
-
-  <!-- 스코어 -->
-  <div id="score-display">0 PTS</div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
   <script type="module" src="js/main.js"></script>

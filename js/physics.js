@@ -74,13 +74,20 @@ export function applyImpulse(mx, my, mul, dampRatio, p) {
   const nx = dx / dist;
   const ny = dy / dist;
 
-  const BASE  = 180;
-  const MIN_D = 35;
+  // 거리 기반 충격량 — 가까울수록 강하지만 0 나눗셈 방지
+  const BASE  = 205;
+  const MIN_D = 28;
   const mag   = BASE * mul / Math.max(dist, MIN_D);
 
+  // 각 진자 팔의 접선 방향(법선 벡터)에 투영 → 물리적으로 유효한 토크만 전달
   a2v += (nx * Math.cos(a2) - ny * Math.sin(a2)) * mag;
-  a1v += (nx * Math.cos(a1) - ny * Math.sin(a1)) * mag * 0.55;
+  a1v += (nx * Math.cos(a1) - ny * Math.sin(a1)) * mag * 0.65;
 
-  a1v += p.random(-0.15, 0.15) * mul;
-  a2v += p.random(-0.15, 0.15) * mul;
+  // 충격 방향에 수직인 작은 소용돌이 성분 → 자연스러운 회전감
+  const swirl = 0.12 * mul;
+  a2v += (-ny * Math.cos(a2) - nx * Math.sin(a2)) * swirl;
+
+  // 카오틱 시드 (충전 세기에 비례)
+  a1v += p.random(-0.10, 0.10) * mul;
+  a2v += p.random(-0.10, 0.10) * mul;
 }

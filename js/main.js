@@ -1,18 +1,14 @@
 import { DT, SUBSTEPS, PINK, MINT, GOLD, BG } from './constants.js';
 import { ensureAudio, soundTap, soundChargeStart, soundChargeUpdate,
          soundChargeRelease, stopChargeOsc, soundNote } from './audio.js';
-import { resetPendulum, getPos, stepRK4, applyImpulse, applySpring,
-         a2v, a2, L1, L2, cx, cy } from './physics.js';
-import { getPatternTargets, cyclePattern, stopPattern,
-         isPatternActive, getPatternLabel } from './patterns.js';
+import { resetPendulum, getPos, stepRK4, applyImpulse,
+         a1, a1v, a2, a2v, L1, L2 } from './physics.js';
+import { renderHUD, setHudVisible } from './hud.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
          addRings, spawnParticles, cycleTrailStyle, toggleMirror } from './effects.js';
-import { updateTargets, renderTargets, getScore, resetTargets } from './targets.js';
-import { flashTap, updateChargeUI, updateEnergy, updateScore,
-         setMirrorActive, setStyleLabel, setGameActive, flashSave,
-         setPatternLabel,
-         onMirrorClick, onStyleClick, onGameClick, onSaveClick,
-         onPatternClick } from './ui.js';
+import { updateEnergy, getSpeedScale,
+         setMirrorActive, setStyleLabel, setHudActive,
+         onMirrorClick, onStyleClick, onHudClick } from './ui.js';
 
 new p5(function(p) {
 
@@ -21,14 +17,11 @@ new p5(function(p) {
   let pressTime   = 0;
   let chargeLevel = 0;
   let timeScale   = 1.0;
-  let cursorX     = 0;        // 마우스/터치 최신 위치
+  let cursorX     = 0;
   let cursorY     = 0;
 
   // 에너지 시스템
   let energy = 1.0;           // 0.0 ~ 1.0
-
-  // 게임 모드
-  let gameMode = false;
 
   // 멜로디: a2v 부호 전환 감지용
   let prevA2vSign = 0;
@@ -41,23 +34,14 @@ new p5(function(p) {
     setStyleLabel(label);
   });
 
-  onGameClick(() => {
-    gameMode = !gameMode;
-    setGameActive(gameMode);
-    if (gameMode) resetTargets();
+  onHudClick(() => {
+    const next = !_hudOn;
+    _hudOn = next;
+    setHudVisible(next);
+    setHudActive(next);
   });
 
-  onSaveClick(() => {
-    p.saveCanvas('swing-paint', 'png');
-    flashSave();
-  });
-
-  onPatternClick(() => {
-    cyclePattern();
-    const on = isPatternActive();
-    setPatternLabel(getPatternLabel(), on);
-    if (!on) stopPattern(); // 완전히 끄기
-  });
+  let _hudOn = false;
 
   // ── setup ────────────────────────────────────────────────────────────────
   p.setup = function() {
@@ -74,7 +58,7 @@ new p5(function(p) {
     // 에너지 자연 회복 (초당 +15%)
     if (mode !== 'charging') energy = Math.min(1.0, energy + 0.15 / 60);
 
-    // 타임스케일
+    // 타임스케일 (충전 슬로우모션 + 해제 버스트)
     if (mode === 'charging') {
       chargeLevel = Math.min((p.millis() - pressTime) / 3000, 1.0);
       timeScale   = p.lerp(timeScale, 0.06, 0.07);
@@ -84,14 +68,9 @@ new p5(function(p) {
       timeScale  = p.lerp(timeScale, 1.0, rate);
     }
 
-    // 물리 적분
-    for (let i = 0; i < SUBSTEPS; i++) stepRK4(DT * timeScale);
-
-    // 패턴 모드: IK 스프링으로 진자를 패턴 위에 유도
-    if (isPatternActive() && mode === 'idle') {
-      const targets = getPatternTargets(cx, cy, L1, L2);
-      if (targets) applySpring(targets[0], targets[1], 12.0, 0.28);
-    }
+    // 물리 적분 (timeScale × 속도 슬라이더 배율)
+    const spd = getSpeedScale();
+    for (let i = 0; i < SUBSTEPS; i++) stepRK4(DT * timeScale * spd);
 
     const pos = getPos();
     const ct  = (Math.sin(colorPhase) + 1) / 2;
@@ -123,20 +102,6 @@ new p5(function(p) {
     renderParticles(p);
     renderRings(p);
 
-    // ── 게임 모드: 타겟 링 ────────────────────────────────────────────────
-    if (gameMode) {
-      const hit = updateTargets(p, pos.x2, pos.y2);
-      if (hit) {
-        const hr = p.lerp(PINK[0], MINT[0], ct);
-        const hg = p.lerp(PINK[1], MINT[1], ct);
-        const hb = p.lerp(PINK[2], MINT[2], ct);
-        addRings(pos.x2, pos.y2, hr, hg, hb, 3, 200);
-        spawnParticles(p, pos.x2, pos.y2, hr, hg, hb, 10, 4.5);
-        soundTap(600 + Math.random() * 280);
-      }
-      renderTargets(p);
-    }
-
     // ── 진자 팔 ───────────────────────────────────────────────────────────
     p.stroke(60, 80, 110, 180);
     p.strokeWeight(1.2);
@@ -166,10 +131,11 @@ new p5(function(p) {
     // ── 조준 화살표 (충전 중) ─────────────────────────────────────────────
     if (mode === 'charging') drawAimArrow(p, pos.x2, pos.y2);
 
+    // ── Telemetry HUD ─────────────────────────────────────────────────────
+    renderHUD(p, a1, a2, a1v, a2v, L1, L2);
+
     // ── UI 업데이트 ───────────────────────────────────────────────────────
-    updateChargeUI(mode, chargeLevel);
     updateEnergy(energy);
-    updateScore(getScore(), gameMode);
   };
 
   // ── 조준 화살표 ──────────────────────────────────────────────────────────
@@ -182,7 +148,6 @@ new p5(function(p) {
     const len = 55 + chargeLevel * 45;
     const ex = bx + nx * len, ey = by + ny * len;
 
-    // 점선
     p.push();
     p.stroke(255, 255, 255, 55 + chargeLevel * 90);
     p.strokeWeight(1.2);
@@ -191,7 +156,6 @@ new p5(function(p) {
     p.drawingContext.setLineDash([]);
     p.pop();
 
-    // 화살촉
     const hs    = 8 + chargeLevel * 6;
     const angle = Math.atan2(ny, nx);
     p.push();
@@ -206,7 +170,7 @@ new p5(function(p) {
   // ── 인터랙션 공통 ────────────────────────────────────────────────────────
   function onPressStart() {
     ensureAudio();
-    if (energy < 0.06) return; // 에너지 부족
+    if (energy < 0.06) return;
     mode        = 'charging';
     pressTime   = p.millis();
     chargeLevel = 0;
@@ -219,7 +183,7 @@ new p5(function(p) {
 
     if (held < 260) {
       // TAP
-      applyImpulse(mx, my, 1.0, 0.70, p);
+      applyImpulse(mx, my, 1.0, 0.45, p);
       const ct = (Math.sin(colorPhase) + 1) / 2;
       const ir = p.lerp(PINK[0], MINT[0], ct);
       const ig = p.lerp(PINK[1], MINT[1], ct);
@@ -228,7 +192,6 @@ new p5(function(p) {
       addRings(mx, my, ir, ig, ib, 2, 205);
       spawnParticles(p, mx, my, ir, ig, ib, 12, 5);
       stopChargeOsc();
-      flashTap();
       energy = Math.max(0, energy - 0.08);
 
     } else {
@@ -248,17 +211,28 @@ new p5(function(p) {
   }
 
   // ── 마우스 (데스크탑) ────────────────────────────────────────────────────
-  p.mousePressed = function() {
+  p.mousePressed = function(event) {
+    if (isUITouch(event)) return;   // UI 클릭은 캔버스 인터랙션과 완전 분리
     cursorX = p.mouseX; cursorY = p.mouseY;
     onPressStart();
   };
   p.mouseMoved = p.mouseDragged = function() {
     cursorX = p.mouseX; cursorY = p.mouseY;
   };
-  p.mouseReleased = () => onPressEnd(p.mouseX, p.mouseY);
+  p.mouseReleased = (event) => {
+    if (isUITouch(event) && mode === 'idle') return;
+    onPressEnd(p.mouseX, p.mouseY);
+  };
 
   // ── 터치 (모바일) ────────────────────────────────────────────────────────
-  p.touchStarted = function() {
+  function isUITouch(event) {
+    const el = event && event.target;
+    return el && (el.tagName === 'BUTTON' || el.tagName === 'INPUT' ||
+                  el.closest('#mode-panel, #speed-panel'));
+  }
+
+  p.touchStarted = function(event) {
+    if (isUITouch(event)) return true;
     if (p.touches.length > 0) {
       cursorX = p.touches[0].x;
       cursorY = p.touches[0].y;
@@ -267,7 +241,8 @@ new p5(function(p) {
     return false;
   };
 
-  p.touchMoved = function() {
+  p.touchMoved = function(event) {
+    if (isUITouch(event)) return true;
     if (p.touches.length > 0) {
       cursorX = p.touches[0].x;
       cursorY = p.touches[0].y;
@@ -275,7 +250,8 @@ new p5(function(p) {
     return false;
   };
 
-  p.touchEnded = function() {
+  p.touchEnded = function(event) {
+    if (isUITouch(event)) return true;
     onPressEnd(cursorX, cursorY);
     return false;
   };
