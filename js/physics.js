@@ -121,6 +121,20 @@ export function stepRK4(dt) {
     if (Math.abs(a1v) < STICK) a1v *= (1 - 0.055 * dt / 0.016);
     if (Math.abs(a2v) < STICK) a2v *= (1 - 0.055 * dt / 0.016);
   }
+  // EARTH: 저속 점착 감쇠 — 속도가 낮을수록 강하게, 미세진동 단계적 소멸
+  if (envMode === 'EARTH') {
+    const STICK_V = 0.35;                  // 이 속도 이하에서 점착 감쇠 시작
+    const stick   = 0.025 * (dt / 0.016);  // 최대 감쇠율 (v=0 기준)
+    const f1 = Math.max(0, 1 - Math.abs(a1v) / STICK_V);
+    const f2 = Math.max(0, 1 - Math.abs(a2v) / STICK_V);
+    a1v *= (1 - f1 * stick);
+    a2v *= (1 - f2 * stick);
+    // 완전 정지 스냅 — 각도·속도 모두 미세할 때 수직으로 고정
+    if (Math.abs(a1v) < 0.004 && Math.abs(a2v) < 0.004 &&
+        Math.abs(a1)  < 0.12  && Math.abs(a2)  < 0.18) {
+      a1 = 0; a2 = 0; a1v = 0; a2v = 0;
+    }
+  }
   // 카오스: 상부 관절은 거의 무중력(g=10), 하부 추는 약한 중력 복원력 추가
   // — a2=0이 수직 아래방향이므로 -sin(a2)가 아래로 당기는 복원 토크
   if (envMode === 'CHAOS') {
@@ -200,13 +214,14 @@ export function applyImpulse(mx, my, mul, dampRatio, p) {
   a2v += (nx * Math.cos(a2) - ny * Math.sin(a2)) * mag;
   a1v += (nx * Math.cos(a1) - ny * Math.sin(a1)) * mag * 0.65;
 
-  // 충격 방향에 수직인 작은 소용돌이 성분 → 자연스러운 회전감
-  const swirl = 0.12 * mul;
-  a2v += (-ny * Math.cos(a2) - nx * Math.sin(a2)) * swirl;
-
-  // 카오틱 시드 (충전 세기에 비례)
-  a1v += p.random(-0.10, 0.10) * mul;
-  a2v += p.random(-0.10, 0.10) * mul;
+  if (envMode !== 'EARTH') {
+    // 충격 방향에 수직인 소용돌이 성분 (게임적 회전감)
+    const swirl = 0.12 * mul;
+    a2v += (-ny * Math.cos(a2) - nx * Math.sin(a2)) * swirl;
+    // 카오틱 시드
+    a1v += p.random(-0.10, 0.10) * mul;
+    a2v += p.random(-0.10, 0.10) * mul;
+  }
 }
 
 // CHARGE 전용 — 세기는 chargeLevel에만 비례, 거리 무관 (방향만 사용)
@@ -217,15 +232,19 @@ export function applyChargeImpulse(mx, my, chargeLevel, p) {
   if (dist < 1) return;
   const nx = dx / dist, ny = dy / dist;
 
-  const mag   = 5 + chargeLevel * 20;         // 5(최소) → 25(풀차지 ≈ 6×탭)
-  const swirl = chargeLevel * 4.5;             // 회전감, 차지에 비례
-  const chaos = 0.12 + chargeLevel * 0.22;     // 카오틱 시드
+  const mag = 5 + chargeLevel * 20;           // 5(최소) → 25(풀차지 ≈ 6×탭)
 
   a2v += (nx * Math.cos(a2) - ny * Math.sin(a2)) * mag;
   a1v += (nx * Math.cos(a1) - ny * Math.sin(a1)) * mag * 0.65;
-  a2v += (-ny * Math.cos(a2) - nx * Math.sin(a2)) * swirl;
-  a1v += p.random(-chaos, chaos) * mag * 0.10;
-  a2v += p.random(-chaos, chaos) * mag * 0.10;
+
+  if (envMode !== 'EARTH') {
+    // 회전감 + 카오틱 시드 (게임적 요소)
+    const swirl = chargeLevel * 4.5;
+    const chaos = 0.12 + chargeLevel * 0.22;
+    a2v += (-ny * Math.cos(a2) - nx * Math.sin(a2)) * swirl;
+    a1v += p.random(-chaos, chaos) * mag * 0.10;
+    a2v += p.random(-chaos, chaos) * mag * 0.10;
+  }
 }
 
 // ── 카오스 관절 노이즈 ────────────────────────────────────────────────────────

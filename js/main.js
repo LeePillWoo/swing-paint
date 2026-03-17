@@ -86,16 +86,17 @@ new p5(function(p) {
     // ── 자동 패턴 교란 (3분 무조작) ──────────────────────────────────────
     if (Date.now() - lastInteractAt >= AUTO_NUDGE_MS) {
       lastInteractAt = Date.now();
-      // 피벗 기준 임펄스 (랜덤 방향)
-      const nx = p.width  * p.random(0.2, 0.8);
-      const ny = p.height * p.random(0.2, 0.8);
-      applyImpulse(nx, ny, p.random(0.8, 1.6), 0.25, p);
-      // 충격 방향 계산 (임펄스 지점 → 추 방향)
+      // 피벗 기준 진자 궤도 반경(L1+L2) 안쪽 랜덤 좌표
       const pos0   = getPos();
-      const dirAng = Math.atan2(pos0.x2 - nx, pos0.y2 - ny);  // 힘 방향각
+      const rnd  = Math.sqrt(p.random(0, 1)) * (L1 + L2);
+      const tAng = p.random(0, Math.PI * 2);
+      const tx   = pos0.cx + rnd * Math.cos(tAng);
+      const ty   = pos0.cy + rnd * Math.sin(tAng);
+      applyImpulse(tx, ty, p.random(0.8, 1.6), 0.25, p);
+      // 실제 터치 좌표에서 이펙트 — 중심이 아닌 터치점 표시
+      const dirAng = Math.atan2(pos0.x2 - tx, pos0.y2 - ty);
       const col = _palette();
-      // 피벗에서 방향성 파동 이펙트
-      nudgeSweep(p, pos0.cx, pos0.cy, col[0], col[1], col[2], dirAng);
+      nudgeSweep(p, tx, ty, col[0], col[1], col[2], dirAng);
     }
 
     // ── 트레일 색·폭 (서브스텝 루프 전 확정) ─────────────────────────────

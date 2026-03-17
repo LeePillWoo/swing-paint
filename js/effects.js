@@ -226,11 +226,13 @@ function renderLineTrail(p, pivotX, pivotY, trailScale) {
 
       const a = Math.min(cur.alpha, prev.alpha);
       p.noFill();
-      p.stroke(cur.r, cur.g, cur.b, a * 35);
-      p.strokeWeight(cur.w * 5.5);
+      // 외곽 글로우 (레이저 확산)
+      p.stroke(cur.r, cur.g, cur.b, a * 45);
+      p.strokeWeight(cur.w * 2.8);
       p.line(x1, y1, x2, y2);
-      p.stroke(cur.r, cur.g, cur.b, a * 230);
-      p.strokeWeight(cur.w * 1.3);
+      // 코어 레이저 라인 (극세)
+      p.stroke(cur.r, cur.g, cur.b, a * 255);
+      p.strokeWeight(cur.w * 0.45);
       p.line(x1, y1, x2, y2);
     }
   }
