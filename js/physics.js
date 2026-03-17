@@ -6,21 +6,22 @@ export let a1, a2, a1v, a2v;
 // ── 환경 시스템 ────────────────────────────────────────────────────────────
 const ENV = {
   EARTH: { g: 350, damp: 0.02  },  // 공기 저항, 자연스럽게 서서히 감속
-  SPACE: { g:   8, damp: 0.0   },  // 무중력, 마찰 없음 — 영원히 회전
+  SPACE: { g:   0, damp: 0.0   },  // 완전 무중력, 마찰 없음 — 낙하 없이 영원 회전
   WATER: { g: 100, damp: 0.30  },  // 부력+점성 — 선형 감쇠는 줄이고 속도²저항으로 보완
+  CHAOS: { g:  10, damp: 0.0   },  // 준무중력 + 관절 노이즈 — 패턴 비반복
 };
 
-export let envMode  = 'SPACE';
-export let currentG    = ENV.SPACE.g;
-export let currentDamp = ENV.SPACE.damp;
+export let envMode  = 'CHAOS';
+export let currentG    = ENV.CHAOS.g;
+export let currentDamp = ENV.CHAOS.damp;
 
 // 환경 타겟값 (HUD 정규화용)
 export const ENV_G_MAX    = 350;
 export const ENV_DAMP_MAX = 0.85;
 
 export function cycleEnv() {
-  const modes = ['EARTH', 'SPACE', 'WATER'];
-  envMode = modes[(modes.indexOf(envMode) + 1) % 3];
+  const modes = ['CHAOS', 'EARTH', 'WATER', 'SPACE'];
+  envMode = modes[(modes.indexOf(envMode) + 1) % modes.length];
   return envMode;
 }
 
@@ -45,7 +46,7 @@ export let currentM1 = MASS.STANDARD.m1;
 export let currentM2 = MASS.STANDARD.m2;
 
 export function cycleMass() {
-  const modes = ['STANDARD', 'IRON', 'FEATHER'];
+  const modes = ['STANDARD', 'FEATHER', 'IRON'];
   massMode = modes[(modes.indexOf(massMode) + 1) % 3];
   currentM1 = MASS[massMode].m1;
   currentM2 = MASS[massMode].m2;
@@ -116,11 +117,58 @@ export function stepRK4(dt) {
   if (envMode === 'WATER') {
     a1v -= a1v * Math.abs(a1v) * 0.004 * dt;
     a2v -= a2v * Math.abs(a2v) * 0.004 * dt;
-    // 일정 속도 이하로 떨어지면 점착 저항으로 빠르게 소멸
     const STICK = 0.5;
     if (Math.abs(a1v) < STICK) a1v *= (1 - 0.055 * dt / 0.016);
     if (Math.abs(a2v) < STICK) a2v *= (1 - 0.055 * dt / 0.016);
   }
+  // 카오스: 상부 관절은 거의 무중력(g=10), 하부 추는 약한 중력 복원력 추가
+  // — a2=0이 수직 아래방향이므로 -sin(a2)가 아래로 당기는 복원 토크
+  if (envMode === 'CHAOS') {
+    const CHAOS_BOB_G = 75;
+    a2v -= (CHAOS_BOB_G / L2) * Math.sin(a2) * dt;
+  }
+}
+
+// 드래그 전용 — a1 강제 구동, a2만 물리 적분 (지구 중력·공기저항 고정)
+// forcedA1a: 커서 각가속도 (원심력 항에 필요)
+const DRAG_G    = 350;   // 드래그 중 항상 지구 중력
+const DRAG_DAMP = 0.40;  // 홀드 시 빠른 감속 (공기 저항 강화)
+
+export function stepRK4_drag(dt, forcedA1, forcedA1v, forcedA1a) {
+  function deriv(s2, s2v) {
+    const diff = forcedA1 - s2;
+    const a2a  = (
+        L1 * forcedA1v * forcedA1v * Math.sin(diff)   // 원심력
+      - L1 * forcedA1a * Math.cos(diff)               // 가속도 반작용
+      - DRAG_G * Math.sin(s2)                          // 중력 복원력
+    ) / L2;
+    return [s2v, a2a];
+  }
+  const [k1c, k1d] = deriv(a2,            a2v);
+  const [k2c, k2d] = deriv(a2+k1c*dt/2,  a2v+k1d*dt/2);
+  const [k3c, k3d] = deriv(a2+k2c*dt/2,  a2v+k2d*dt/2);
+  const [k4c, k4d] = deriv(a2+k3c*dt,    a2v+k3d*dt);
+  a2  += (k1c+2*k2c+2*k3c+k4c)*dt/6;
+  a2v += (k1d+2*k2d+2*k3d+k4d)*dt/6;
+  a2v *= Math.max(0, 1 - DRAG_DAMP * dt);  // 공기 저항
+  // a1 커서 위치에 강제 고정
+  a1  = forcedA1;
+  a1v = forcedA1v;
+}
+
+// 드래그/홀드 중 속도 감쇠 — 하부 추 안정화용
+export function dampForDrag(a1Factor, a2Factor) {
+  a1v *= a1Factor;
+  a2v *= a2Factor;
+}
+
+// 드래그 전용: a1만 타겟 각도 방향으로 당김 (a2는 자유 물리)
+// k = 스프링 강도, d = a1v 감쇠 비율
+export function applyDragForce(targetAngle, k, d) {
+  let da = targetAngle - a1;
+  if (da >  Math.PI) da -= Math.PI * 2;
+  if (da < -Math.PI) da += Math.PI * 2;
+  a1v += da * k - a1v * d;
 }
 
 // 패턴 모드: 타겟 각도로 스프링-댐퍼 힘 적용
@@ -178,4 +226,30 @@ export function applyChargeImpulse(mx, my, chargeLevel, p) {
   a2v += (-ny * Math.cos(a2) - nx * Math.sin(a2)) * swirl;
   a1v += p.random(-chaos, chaos) * mag * 0.10;
   a2v += p.random(-chaos, chaos) * mag * 0.10;
+}
+
+// ── 카오스 관절 노이즈 ────────────────────────────────────────────────────────
+// 저역통과 필터링된 작은 연속 드리프트만 사용 — 인위적 킥 없음
+// 이중진자는 충분한 에너지에서 원래 카오틱 → 작은 노이즈가 초기조건을
+// 서서히 바꾸면 지수적 발산이 자연스럽게 패턴을 달라지게 함
+let _cv1 = 0, _cv2 = 0;
+
+export function applyChaosNoise() {
+  if (envMode !== 'CHAOS') return;
+
+  // 상부: 시정수 ~20프레임 — 완만하고 느린 방향 드리프트
+  _cv1 = _cv1 * 0.95 + (Math.random() - 0.5) * 0.10;
+  // 하부: 시정수 ~7프레임 — 조금 더 빠른 미세 교란
+  _cv2 = _cv2 * 0.86 + (Math.random() - 0.5) * 0.18;
+
+  // 에너지가 낮을 때만 부드럽게 보조 — 급격한 게인 변화 없이 서서히
+  const KE    = a1v * a1v + a2v * a2v;
+  const boost = Math.max(0, 1.0 - KE / 4.0);  // KE≥4 → 0, KE=0 → 1
+
+  a1v += _cv1 * (0.07 + boost * 0.05);
+  a2v += _cv2 * (0.12 + boost * 0.10);
+
+  // 극미세 에너지 상한 — 장시간 후 무한 가속 방지
+  a1v *= 0.9998;
+  a2v *= 0.9998;
 }

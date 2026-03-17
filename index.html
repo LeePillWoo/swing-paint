@@ -146,7 +146,14 @@
     }
     .mode-btn:hover { color: rgba(255,255,255,0.55); border-color: rgba(255,255,255,0.18); }
 
-    /* ── ENV 버튼 (EARTH / SPACE / WATER) ───────────────────── */
+    /* ── ENV 버튼 (CHAOS / EARTH / SPACE / WATER) ───────────── */
+    .env-btn.chaos {
+      color: #cc55ff;
+      border-color: rgba(204,85,255,0.42);
+      box-shadow: 0 0 8px rgba(204,85,255,0.18), inset 0 0 12px rgba(204,85,255,0.06);
+    }
+    .env-btn.chaos:hover { box-shadow: 0 0 14px rgba(204,85,255,0.38); }
+
     .env-btn.earth {
       color: #3dcc70;
       border-color: rgba(61,204,112,0.38);
@@ -378,7 +385,7 @@
 
     <!-- ENV + MASS (좌측 하단) -->
     <div id="env-panel" class="ui-panel">
-      <button class="mode-btn env-btn space" id="btn-env">SPACE</button>
+      <button class="mode-btn env-btn chaos" id="btn-env">CHAOS</button>
       <button class="mode-btn mass-btn standard" id="btn-mass">STANDARD</button>
     </div>
 

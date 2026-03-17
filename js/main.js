@@ -1,8 +1,9 @@
 import { DT, SUBSTEPS, PINK, MINT, CYAN, VIOLET, ORANGE, LIME, RED, AZURE, BG } from './constants.js';
 import { ensureAudio, soundTap, soundNote } from './audio.js';
-import { resetPendulum, getPos, stepRK4, overrideA1, applyImpulse,
+import { resetPendulum, getPos, stepRK4, stepRK4_drag, overrideA1, applyImpulse,
+         dampForDrag,
          a1, a1v, a2, a2v, L1, L2,
-         cycleEnv, updatePhysicsEnv, envMode,
+         cycleEnv, updatePhysicsEnv, envMode, applyChaosNoise,
          cycleMass, massMode, currentM1, currentM2 } from './physics.js';
 import { renderHUD, setHudVisible } from './hud.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
@@ -21,8 +22,11 @@ new p5(function(p) {
   let cursorY       = 0;
   let pressX        = 0;   // 눌린 시작 좌표 (탭 vs 드래그 판별용)
   let pressY        = 0;
-  let prevDragAngle = 0;
-  let dragVelSmooth = 0;
+  let prevDragAngle    = 0;
+  let dragVelSmooth    = 0;
+  let prevDragVelSmooth = 0;  // 각가속도 계산용
+  let dragA1Acc        = 0;   // 커서 각가속도 (스무딩)
+  let dragDistRatio    = 0;   // 피벗 거리 기반 속도 비율 (0=중앙, 1=외곽)
 
   const DRAG_THRESHOLD = 18;  // px — 이 이상 움직이면 드래그로 확정
 
@@ -107,8 +111,7 @@ new p5(function(p) {
     // 질량 모드별 잔상 페이드 배율 (슬라이더는 렌더 시 실시간 적용)
     const massFade = massMode === 'IRON' ? 0.5 : massMode === 'FEATHER' ? 2.2 : 1.0;
 
-    // ── 드래그: 커서 각도 추적 + 각속도 계산 ─────────────────────────────
-    // pending(눌림) 상태부터 추적 시작 — dragging 확정 전에도 velocity 축적
+    // ── 드래그: 커서 각도 추적 + 각속도·각가속도 계산 ──────────────────
     let targetDragAngle = 0;
     if (mode === 'dragging' || mode === 'pending') {
       const pos0 = getPos();
@@ -116,30 +119,50 @@ new p5(function(p) {
       let da = targetDragAngle - prevDragAngle;
       if (da >  Math.PI) da -= Math.PI * 2;
       if (da < -Math.PI) da += Math.PI * 2;
-      // 60fps 기준 각속도 (rad/s) → 스무딩
-      dragVelSmooth = dragVelSmooth * 0.72 + da * 60 * 0.28;
+      const rawVel  = da * 60;
+      dragVelSmooth = dragVelSmooth * 0.82 + rawVel * 0.18;
+      // 각가속도: 속도 변화율 (서브스텝 물리에서 원심력 보정용)
+      const rawAcc = (dragVelSmooth - prevDragVelSmooth) * 60;
+      dragA1Acc = dragA1Acc * 0.60 + rawAcc * 0.40;
+      prevDragVelSmooth = dragVelSmooth;
       prevDragAngle = targetDragAngle;
+
+      const ddx = cursorX - pos0.cx, ddy = cursorY - pos0.cy;
+      const rawRatio = Math.min(Math.sqrt(ddx*ddx + ddy*ddy) / (L1 * 1.3), 1.0);
+      dragDistRatio = dragDistRatio * 0.80 + rawRatio * 0.20;
+    }
+
+    // ── pending 홀드: 추 잦아들게 ─────────────────────────────────────
+    if (mode === 'pending') dampForDrag(0.96, 0.96);
+
+    // ── dragging: a1 커서에 직접 고정, 속도는 거리비 스케일 ───────────
+    // (서브스텝 루프에서 stepRK4_drag로 a2만 지구 중력 물리 적분)
+    let dragFixedA1 = 0, dragFixedA1v = 0;
+    if (mode === 'dragging') {
+      const sf    = dragDistRatio * dragDistRatio * 0.95 + 0.05; // 0.05~1.0
+      dragFixedA1  = targetDragAngle;
+      dragFixedA1v = Math.max(-8, Math.min(8, dragVelSmooth * sf));
+      overrideA1(dragFixedA1, dragFixedA1v);  // 서브스텝 전 동기화
     }
 
     // ── 물리 적분 + 서브스텝마다 궤적 누적 ───────────────────────────────
-    // DT×SUBSTEPS = 0.008×4 = 0.032 → 기존 0.016×2 와 동일한 시뮬속도 유지
     const spd     = getSpeedScale();
     const isComet = trailStyle === 'comet';
-    const fillPx  = isComet ? 20 : 5;  // 코맷은 도트 간격 더 넓게
+    const fillPx  = isComet ? 20 : 5;
     let lp = getPos();
     let cometTick = 0;
 
     for (let i = 0; i < SUBSTEPS; i++) {
-      // 드래그 중: a1을 커서 각도로 강제 고정 (사전·사후 둘다 적용)
-      if (mode === 'dragging') overrideA1(targetDragAngle, dragVelSmooth);
       const totalDt = DT * timeScale * spd;
       const MAX_DT  = 0.018;
       const subN    = Math.ceil(totalDt / MAX_DT);
       const subDt   = totalDt / subN;
-      for (let s = 0; s < subN; s++) stepRK4(subDt);
+      for (let s = 0; s < subN; s++) {
+        if (mode === 'dragging') stepRK4_drag(subDt, dragFixedA1, dragFixedA1v, dragA1Acc);
+        else stepRK4(subDt);
+      }
       // NaN 가드 — 수치 발산 시 리셋
       if (!isFinite(a1v) || !isFinite(a2v)) resetPendulum(p);
-      if (mode === 'dragging') overrideA1(targetDragAngle, dragVelSmooth);
       const sp = getPos();
 
       // 코맷: 서브스텝 4회 중 1회만 push → 기존 대비 2배 간격
@@ -160,6 +183,9 @@ new p5(function(p) {
     }
 
     const pos = getPos();  // 서브스텝 종료 후 최종 위치
+
+    // ── 카오스 관절 노이즈 (서브스텝 외부, 프레임 1회) ───────────────────
+    applyChaosNoise();
 
     // ── 멜로디: 방향 전환 + 고속 완전회전 무음 방지 ─────────────────────
     const curSign  = Math.sign(a2v);
@@ -195,6 +221,29 @@ new p5(function(p) {
 
     // ── bob2 (질량 모드별) ────────────────────────────────────────────────
     drawBob2(p, pos);
+
+    // ── 드래그 속도 게이지 (손가락/커서 위치) ────────────────────────────
+    if (mode === 'dragging' || (mode === 'pending' && dragDistRatio > 0.05)) {
+      const gr = 16;
+      const gx = cursorX, gy = cursorY;
+      const startA = -Math.PI / 2;
+      p.noFill();
+      // 배경 링
+      p.stroke(255, 255, 255, 22); p.strokeWeight(2.5);
+      p.circle(gx, gy, gr * 2);
+      // 속도 아크 (트레일 색 일치)
+      if (dragDistRatio > 0.02) {
+        const arcEnd = startA + dragDistRatio * Math.PI * 2;
+        p.stroke(tr, tg, tb, 200); p.strokeWeight(2.5);
+        p.arc(gx, gy, gr * 2, gr * 2, startA, arcEnd);
+        // 외곽 헤일로
+        p.stroke(tr, tg, tb, 55); p.strokeWeight(6);
+        p.arc(gx, gy, gr * 2, gr * 2, startA, arcEnd);
+      }
+      // 중심 점
+      p.noStroke(); p.fill(255, 255, 255, dragDistRatio > 0.5 ? 220 : 100);
+      p.circle(gx, gy, 3.5);
+    }
 
     // ── Telemetry HUD ─────────────────────────────────────────────────────
     renderHUD(p, a1, a2, a1v, a2v, L1, L2, currentM1, currentM2, massMode);
@@ -299,6 +348,29 @@ new p5(function(p) {
       p.noStroke(); p.fill(65, 210, 220, 170); p.circle(x1, y1, j1s * 0.65);
       p.fill(200, 245, 255, 110); p.circle(x1 - 1.5, y1 - 1.5, 2.5);
 
+    } else if (envMode === 'CHAOS') {
+      // 카오스 — 자홍·보라 불안정 에너지
+      p.stroke(190, 80, 255, 135); p.strokeWeight(1.0);
+      p.line(cx, cy, x1, y1); p.line(x1, y1, x2, y2);
+
+      // 메인 피벗: ×자 크로스 + 이중원
+      p.noFill();
+      p.stroke(215, 100, 255, 175); p.strokeWeight(1.0); p.circle(cx, cy, 18);
+      p.stroke(195,  75, 255,  60); p.strokeWeight(0.7); p.circle(cx, cy, 33);
+      p.stroke(220, 115, 255, 195); p.strokeWeight(0.85);
+      for (let i = 0; i < 4; i++) {
+        const a = i * Math.PI / 4 + Math.PI / 8;
+        p.line(cx + Math.cos(a) * 2.5, cy + Math.sin(a) * 2.5,
+               cx + Math.cos(a) * 10,  cy + Math.sin(a) * 10);
+      }
+      p.noStroke(); p.fill(230, 130, 255, 240); p.circle(cx, cy, 3.5);
+
+      // 미드 조인트: 이중 링 + 코어
+      p.noFill();
+      p.stroke(205,  85, 255, 155); p.strokeWeight(0.9); p.circle(x1, y1, j1s * 1.5);
+      p.stroke(215, 105, 255,  75); p.strokeWeight(0.6); p.circle(x1, y1, j1s * 2.4);
+      p.noStroke(); p.fill(215,  95, 255, 215); p.circle(x1, y1, j1s * 0.52);
+
     } else {
       // EARTH
       p.stroke(60, 80, 110, 180); p.strokeWeight(1.2);
@@ -324,7 +396,9 @@ new p5(function(p) {
     pressY = cursorY;
     const pos0 = getPos();
     prevDragAngle = Math.atan2(cursorX - pos0.cx, cursorY - pos0.cy);
-    dragVelSmooth = 0;
+    dragVelSmooth     = 0;
+    prevDragVelSmooth = 0;
+    dragA1Acc         = 0;
   }
 
   // 커서 이동 시 이동거리로 탭→드래그 전환 판별
@@ -348,9 +422,8 @@ new p5(function(p) {
       energy = Math.max(0, energy - 0.08);
 
     } else if (mode === 'dragging') {
-      // ── FLICK: 드래그 후 릴리즈 → 각속도 주입 ────────────────────────
-      overrideA1(a1, dragVelSmooth);
-      const flickMag = Math.abs(dragVelSmooth);
+      // ── FLICK: 드래그 후 릴리즈 → 현재 a1v가 그대로 던지기 속도
+      const flickMag = Math.abs(a1v);
       if (flickMag > 0.5) {
         timeScale = 1.0 + Math.min(flickMag * 0.12, 3.0);
         const col = _palette();
