@@ -2,6 +2,7 @@ import { envMode, massMode } from './physics.js';
 
 let audioCtx   = null;
 let lastNoteAt = 0;
+let _chargeNode = null;   // 차지 중 단일 오실레이터 (폴리포니 방지)
 
 // C 펜타토닉 2옥타브
 const PENTATONIC = [261.63, 293.66, 329.63, 392.00, 440.00,
@@ -19,6 +20,45 @@ function getNotePitch(base) {
   if      (massMode === 'IRON')    freq *= 0.5;  // 1옥타브 아래: 무거운 울림
   else if (massMode === 'FEATHER') freq *= 2.0;  // 1옥타브 위: 가볍고 높은 음
   return Math.min(freq, 2200);  // 이상음 방지
+}
+
+// ── 차지 사운드 (hold 중 매 프레임 호출) ──────────────────────────────────────
+export function soundCharge(level) {
+  if (!audioCtx) return;
+  // 이전 차지 노드 정리
+  if (_chargeNode) {
+    try { _chargeNode.stop(); } catch(e) {}
+    _chargeNode = null;
+  }
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(80 + level * 400, t);
+  g.gain.setValueAtTime(0.04 + level * 0.08, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.10);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t + 0.10);
+  _chargeNode = o;
+}
+
+// ── 차지 릴리즈 사운드 (해제 시 1회) ─────────────────────────────────────────
+export function soundChargeRelease(level) {
+  if (!audioCtx || level < 0.05) return;
+  if (_chargeNode) {
+    try { _chargeNode.stop(); } catch(e) {}
+    _chargeNode = null;
+  }
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(300 + level * 600, t);
+  o.frequency.exponentialRampToValueAtTime(60, t + 0.25);
+  g.gain.setValueAtTime(0.25 * Math.min(level, 1.0), t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t + 0.34);
 }
 
 // ── 탭 / 플릭 충격음 ─────────────────────────────────────────────────────────

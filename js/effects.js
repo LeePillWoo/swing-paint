@@ -44,6 +44,59 @@ export function spawnParticles(p, x, y, rc, gc, bc, n, spd) {
   }
 }
 
+// ── 플릭 폭발 이펙트 — 마지막 터치 지점에서 팡 ──────────────────────────────
+export function flickBurst(p, x, y, rc, gc, bc, mag) {
+  const m = Math.min(Math.max(mag, 1), 8);
+  // 빠른 대형 링 (중심 → 바깥으로 빠르게)
+  for (let i = 0; i < 6; i++)
+    rings.push({ x, y, rad: 2 + i * 8, alpha: 230 - i * 28,
+                 rc, gc, bc, speed: 8 + i * 3 + m * 1.2 });
+  // 화이트 플래시 링 (즉발)
+  rings.push({ x, y, rad: 4,  alpha: 255, rc: 255, gc: 255, bc: 255, speed: 14 });
+  rings.push({ x, y, rad: 12, alpha: 180, rc: 255, gc: 255, bc: 255, speed: 18 });
+  // 방사형 파티클 (밀집 + 고속)
+  const n = Math.floor(30 + m * 5);
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2 + p.random(-0.15, 0.15);
+    const s   = p.random(4 + m * 0.6, 10 + m * 1.2);
+    particles.push({ x, y, vx: Math.cos(ang)*s, vy: Math.sin(ang)*s,
+      alpha: p.random(200, 255), size: p.random(2, 5),
+      r: p.lerp(255, rc, 0.5), g: p.lerp(255, gc, 0.5), b: p.lerp(255, bc, 0.5) });
+  }
+  // 내부 섬광 파티클 (작고 빠름)
+  for (let i = 0; i < 14; i++) {
+    const ang = p.random(p.TWO_PI);
+    const s   = p.random(1, 3 + m * 0.4);
+    particles.push({ x, y, vx: Math.cos(ang)*s, vy: Math.sin(ang)*s,
+      alpha: 255, size: p.random(0.8, 2), r: 255, g: 255, b: 240 });
+  }
+}
+
+// ── 자동 교란 방향성 이펙트 — 피벗에서 힘 방향으로 쏘아올림 ─────────────────
+export function nudgeSweep(p, x, y, rc, gc, bc, dirAng) {
+  // 피벗 기준 대형 파동 링 (느리고 크게)
+  for (let i = 0; i < 4; i++)
+    rings.push({ x, y, rad: 10 + i * 22, alpha: 190 - i * 40,
+                 rc, gc, bc, speed: 3 + i * 1.5 });
+  // 방향성 파티클 — dirAng 기준 ±50도 콘
+  for (let i = 0; i < 40; i++) {
+    const spread = (Math.random() - 0.5) * (Math.PI * 5 / 9); // ±50도
+    const ang = dirAng + spread;
+    const s   = p.random(3, 12);
+    particles.push({ x, y, vx: Math.cos(ang)*s, vy: Math.sin(ang)*s,
+      alpha: p.random(180, 255), size: p.random(1.5, 4.5),
+      r: rc, g: gc, b: bc });
+  }
+  // 역방향 소형 파티클 (반동감)
+  for (let i = 0; i < 12; i++) {
+    const ang = dirAng + Math.PI + (Math.random() - 0.5) * 1.0;
+    const s   = p.random(1.5, 5);
+    particles.push({ x, y, vx: Math.cos(ang)*s, vy: Math.sin(ang)*s,
+      alpha: p.random(100, 170), size: p.random(1, 2.5),
+      r: p.lerp(rc, 255, 0.4), g: p.lerp(gc, 255, 0.4), b: p.lerp(bc, 255, 0.4) });
+  }
+}
+
 // 모드별 최대 버퍼 크기로 제한
 export function pushTrail(x, y, r, g, b, w, fade = 1.0) {
   trail.push({ x, y, alpha: 1.0, r, g, b, w, fade });

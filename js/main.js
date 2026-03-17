@@ -7,7 +7,8 @@ import { resetPendulum, getPos, stepRK4, stepRK4_drag, overrideA1, applyImpulse,
          cycleMass, massMode, currentM1, currentM2 } from './physics.js';
 import { renderHUD, setHudVisible } from './hud.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
-         addRings, spawnParticles, cycleTrailStyle, toggleMirror,
+         addRings, spawnParticles, flickBurst, nudgeSweep,
+         cycleTrailStyle, toggleMirror,
          trailStyle } from './effects.js';
 import { updateEnergy, getSpeedScale, getTrailScale,
          setMirrorActive, setStyleLabel, setHudActive, setEnvLabel, setMassLabel,
@@ -27,6 +28,7 @@ new p5(function(p) {
   let prevDragVelSmooth = 0;  // 각가속도 계산용
   let dragA1Acc        = 0;   // 커서 각가속도 (스무딩)
   let dragDistRatio    = 0;   // 피벗 거리 기반 속도 비율 (0=중앙, 1=외곽)
+  let dragSpeedGauge   = 0;   // 게이지 표시용 — 즉시 반응, 느린 감속
 
   const DRAG_THRESHOLD = 18;  // px — 이 이상 움직이면 드래그로 확정
 
@@ -37,8 +39,8 @@ new p5(function(p) {
   let prevA2vSign  = 0;
   let soundTimer   = 0;   // 프레임 카운터 — 너무 오래 무음이면 강제 재생
 
-  // 자동 패턴 교란 (3분 무조작 시 랜덤 터치 시뮬)
-  const AUTO_NUDGE_MS = 3 * 60 * 1000;  // 3분
+  // 자동 패턴 교란 (2분 무조작 시 랜덤 터치 시뮬)
+  const AUTO_NUDGE_MS = 2 * 60 * 1000;  // 2분
   let lastInteractAt  = Date.now();
 
   // ── UI 버튼 콜백 ─────────────────────────────────────────────────────────
@@ -84,13 +86,16 @@ new p5(function(p) {
     // ── 자동 패턴 교란 (3분 무조작) ──────────────────────────────────────
     if (Date.now() - lastInteractAt >= AUTO_NUDGE_MS) {
       lastInteractAt = Date.now();
-      // 화면 랜덤 위치에 임펄스 (중앙 근처 편향)
+      // 피벗 기준 임펄스 (랜덤 방향)
       const nx = p.width  * p.random(0.2, 0.8);
       const ny = p.height * p.random(0.2, 0.8);
       applyImpulse(nx, ny, p.random(0.8, 1.6), 0.25, p);
+      // 충격 방향 계산 (임펄스 지점 → 추 방향)
+      const pos0   = getPos();
+      const dirAng = Math.atan2(pos0.x2 - nx, pos0.y2 - ny);  // 힘 방향각
       const col = _palette();
-      addRings(nx, ny, col[0], col[1], col[2], 3, 160);
-      spawnParticles(p, nx, ny, col[0], col[1], col[2], 10, 4);
+      // 피벗에서 방향성 파동 이펙트
+      nudgeSweep(p, pos0.cx, pos0.cy, col[0], col[1], col[2], dirAng);
     }
 
     // ── 트레일 색·폭 (서브스텝 루프 전 확정) ─────────────────────────────
@@ -162,7 +167,7 @@ new p5(function(p) {
         else stepRK4(subDt);
       }
       // NaN 가드 — 수치 발산 시 리셋
-      if (!isFinite(a1v) || !isFinite(a2v)) resetPendulum(p);
+      if (!isFinite(a1) || !isFinite(a2) || !isFinite(a1v) || !isFinite(a2v)) resetPendulum(p);
       const sp = getPos();
 
       // 코맷: 서브스텝 4회 중 1회만 push → 기존 대비 2배 간격
@@ -216,6 +221,27 @@ new p5(function(p) {
     renderParticles(p);
     renderRings(p);
 
+    // ── 자동 교란 카운트다운 아크 (피벗 중심, idle 전용) ─────────────────
+    if (mode === 'idle') {
+      const nudgeProgress = Math.min((Date.now() - lastInteractAt) / AUTO_NUDGE_MS, 1.0);
+      if (nudgeProgress > 0.02) {
+        const nr   = 26;                          // 아크 반지름
+        const sa   = -Math.PI / 2;               // 12시 시작
+        const ea   = sa + nudgeProgress * Math.PI * 2;
+        const warm = Math.max(0, (nudgeProgress - 0.7) / 0.3); // 70%부터 점점 빨개짐
+        const ar   = p.lerp(160, 255, warm);
+        const ag   = p.lerp(160,  60, warm);
+        const ab   = p.lerp(255,  60, warm);
+        const alpha = 28 + nudgeProgress * 55;
+        // 외곽 글로우
+        p.noFill(); p.stroke(ar, ag, ab, alpha * 0.4); p.strokeWeight(5);
+        p.arc(pos.cx, pos.cy, nr * 2, nr * 2, sa, ea);
+        // 메인 아크
+        p.stroke(ar, ag, ab, alpha); p.strokeWeight(1.2);
+        p.arc(pos.cx, pos.cy, nr * 2, nr * 2, sa, ea);
+      }
+    }
+
     // ── 진자 팔 + 조인트 (환경 모드별) ──────────────────────────────────
     drawStructure(p, pos);
 
@@ -223,25 +249,36 @@ new p5(function(p) {
     drawBob2(p, pos);
 
     // ── 드래그 속도 게이지 (손가락/커서 위치) ────────────────────────────
-    if (mode === 'dragging' || (mode === 'pending' && dragDistRatio > 0.05)) {
+    if (mode === 'dragging') {
       const gr = 16;
       const gx = cursorX, gy = cursorY;
       const startA = -Math.PI / 2;
+      // 원심력 임계속도: L1*a1v² = DRAG_G → a1v_crit = sqrt(350/L1)
+      // 이 속도 이하면 한 바퀴를 돌 수 없음 → 게이지 0
+      const A1V_MAX  = 8;
+      const A1V_CRIT = Math.sqrt(350 / L1);           // ≈1.3 rad/s
+      const critNorm = Math.min(A1V_CRIT / A1V_MAX, 1.0);
+      const rawGauge = Math.min(Math.abs(dragFixedA1v) / A1V_MAX, 1.0);
+      if (rawGauge > dragSpeedGauge) dragSpeedGauge = rawGauge;
+      else dragSpeedGauge *= 0.995;
+      // 임계 이하 → 0, 임계~최대 → 0~1 선형 스케일
+      const speedRatio = Math.max(0, (dragSpeedGauge - critNorm) / (1 - critNorm));
       p.noFill();
       // 배경 링
       p.stroke(255, 255, 255, 22); p.strokeWeight(2.5);
       p.circle(gx, gy, gr * 2);
-      // 속도 아크 (트레일 색 일치)
-      if (dragDistRatio > 0.02) {
-        const arcEnd = startA + dragDistRatio * Math.PI * 2;
+      // 속도 아크 — 끝점 고정(12시), 시작점이 시계방향으로 전진하며 소멸
+      if (speedRatio > 0.01) {
+        const arcEnd   = startA + Math.PI * 2;           // 고정 끝점 (한 바퀴)
+        const arcStart = arcEnd - speedRatio * Math.PI * 2; // 시계방향으로 줄어듦
         p.stroke(tr, tg, tb, 200); p.strokeWeight(2.5);
-        p.arc(gx, gy, gr * 2, gr * 2, startA, arcEnd);
+        p.arc(gx, gy, gr * 2, gr * 2, arcStart, arcEnd);
         // 외곽 헤일로
         p.stroke(tr, tg, tb, 55); p.strokeWeight(6);
-        p.arc(gx, gy, gr * 2, gr * 2, startA, arcEnd);
+        p.arc(gx, gy, gr * 2, gr * 2, arcStart, arcEnd);
       }
-      // 중심 점
-      p.noStroke(); p.fill(255, 255, 255, dragDistRatio > 0.5 ? 220 : 100);
+      // 중심 점 — 속도 높을수록 밝게
+      p.noStroke(); p.fill(255, 255, 255, 80 + speedRatio * 160);
       p.circle(gx, gy, 3.5);
     }
 
@@ -399,6 +436,7 @@ new p5(function(p) {
     dragVelSmooth     = 0;
     prevDragVelSmooth = 0;
     dragA1Acc         = 0;
+    dragSpeedGauge    = 0;
   }
 
   // 커서 이동 시 이동거리로 탭→드래그 전환 판별
@@ -422,18 +460,15 @@ new p5(function(p) {
       energy = Math.max(0, energy - 0.08);
 
     } else if (mode === 'dragging') {
-      // ── FLICK: 드래그 후 릴리즈 → 현재 a1v가 그대로 던지기 속도
+      // ── FLICK: 드래그 릴리즈 → 마지막 커서 지점에서 폭발
       const flickMag = Math.abs(a1v);
       if (flickMag > 0.5) {
         timeScale = 1.0 + Math.min(flickMag * 0.12, 3.0);
         const col = _palette();
-        const pos = getPos();
         const FLICK_NOTES = [329.63, 369.99, 392.00, 440.00, 493.88];
         soundTap(FLICK_NOTES[Math.floor(p.random(FLICK_NOTES.length))]);
-        addRings(pos.x2, pos.y2, col[0], col[1], col[2],
-          Math.ceil(2 + flickMag * 0.25), 185);
-        spawnParticles(p, pos.x2, pos.y2, col[0], col[1], col[2],
-          Math.floor(6 + flickMag * 1.8), 2 + flickMag * 0.4);
+        // 마지막 터치 지점(커서)에서 팡 폭발
+        flickBurst(p, cursorX, cursorY, col[0], col[1], col[2], flickMag);
         energy = Math.max(0, energy - Math.min(flickMag * 0.018, 0.22));
       }
     }

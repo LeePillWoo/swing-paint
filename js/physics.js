@@ -47,7 +47,7 @@ export let currentM2 = MASS.STANDARD.m2;
 
 export function cycleMass() {
   const modes = ['STANDARD', 'FEATHER', 'IRON'];
-  massMode = modes[(modes.indexOf(massMode) + 1) % 3];
+  massMode = modes[(modes.indexOf(massMode) + 1) % modes.length];
   currentM1 = MASS[massMode].m1;
   currentM2 = MASS[massMode].m2;
   return massMode;
@@ -132,7 +132,7 @@ export function stepRK4(dt) {
 // 드래그 전용 — a1 강제 구동, a2만 물리 적분 (지구 중력·공기저항 고정)
 // forcedA1a: 커서 각가속도 (원심력 항에 필요)
 const DRAG_G    = 350;   // 드래그 중 항상 지구 중력
-const DRAG_DAMP = 0.40;  // 홀드 시 빠른 감속 (공기 저항 강화)
+const DRAG_DAMP = 0.30;  // 홀드 시 감속
 
 export function stepRK4_drag(dt, forcedA1, forcedA1v, forcedA1a) {
   function deriv(s2, s2v) {
