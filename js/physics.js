@@ -247,6 +247,23 @@ export function applyChargeImpulse(mx, my, chargeLevel, p) {
   }
 }
 
+// ── 프리셋용 직접 상태 설정 ────────────────────────────────────────────────────
+export function setPendulumState(a1Val, a2Val, a1vVal, a2vVal) {
+  a1 = a1Val; a2 = a2Val; a1v = a1vVal; a2v = a2vVal;
+}
+
+export function setEnv(mode) {
+  if (ENV[mode]) envMode = mode;
+}
+
+export function setMass(mode) {
+  if (MASS[mode]) {
+    massMode = mode;
+    currentM1 = MASS[mode].m1;
+    currentM2 = MASS[mode].m2;
+  }
+}
+
 // ── 카오스 관절 노이즈 ────────────────────────────────────────────────────────
 // 저역통과 필터링된 작은 연속 드리프트만 사용 — 인위적 킥 없음
 // 이중진자는 충분한 에너지에서 원래 카오틱 → 작은 노이즈가 초기조건을

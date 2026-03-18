@@ -1,18 +1,21 @@
-import { DT, SUBSTEPS, PINK, MINT, CYAN, VIOLET, ORANGE, LIME, RED, AZURE, BG } from './constants.js';
-import { ensureAudio, soundTap, soundNote } from './audio.js';
+import { DT, SUBSTEPS, PINK, MINT, CYAN, VIOLET, ORANGE, LIME, RED, AZURE, BG, PRESETS } from './constants.js';
+import { ensureAudio, soundTap, soundNote, soundCharge, soundChargeRelease, cycleScale } from './audio.js';
 import { resetPendulum, getPos, stepRK4, stepRK4_drag, overrideA1, applyImpulse,
-         dampForDrag,
+         dampForDrag, applyChargeImpulse,
          a1, a1v, a2, a2v, L1, L2,
          cycleEnv, updatePhysicsEnv, envMode, applyChaosNoise,
-         cycleMass, massMode, currentM1, currentM2 } from './physics.js';
+         cycleMass, massMode, currentM1, currentM2,
+         setPendulumState, setEnv, setMass } from './physics.js';
 import { renderHUD, setHudVisible } from './hud.js';
 import { pushTrail, clearTrail, renderTrail, renderParticles, renderRings,
          addRings, spawnParticles, flickBurst, nudgeSweep,
-         cycleTrailStyle, toggleMirror,
-         trailStyle } from './effects.js';
+         cycleTrailStyle, toggleMirror, setTrailStyle, setMirrorState,
+         trailStyle, renderBg, resetBg } from './effects.js';
 import { updateEnergy, getSpeedScale, getTrailScale,
          setMirrorActive, setStyleLabel, setHudActive, setEnvLabel, setMassLabel,
-         onMirrorClick, onStyleClick, onHudClick, onEnvClick, onMassClick } from './ui.js';
+         setPresetLabel, setSliderValues, setScaleLabel,
+         onMirrorClick, onStyleClick, onHudClick, onEnvClick, onMassClick,
+         onPresetClick, onScaleClick } from './ui.js';
 
 new p5(function(p) {
 
@@ -30,10 +33,17 @@ new p5(function(p) {
   let dragDistRatio    = 0;   // 피벗 거리 기반 속도 비율 (0=중앙, 1=외곽)
   let dragSpeedGauge   = 0;   // 게이지 표시용 — 즉시 반응, 느린 감속
 
-  const DRAG_THRESHOLD = 18;  // px — 이 이상 움직이면 드래그로 확정
+  const DRAG_THRESHOLD  = 18;   // px — 이 이상 움직이면 드래그로 확정
+  const CHARGE_START_MS = 400;  // 이 시간 이상 홀드 시 차지 시작
+  const CHARGE_FULL_MS  = 1600; // 풀차지까지 걸리는 추가 시간
 
   // 에너지 시스템
   let energy = 1.0;           // 0.0 ~ 1.0
+
+  // 차지 시스템
+  let pressTime        = 0;
+  let chargeLevel      = 0;   // 0.0 ~ 1.0
+  let chargeSoundTimer = 0;
 
   // 멜로디: a2v 부호 전환 감지용 + 고속 회전 무음 방지 타이머
   let prevA2vSign  = 0;
@@ -58,10 +68,30 @@ new p5(function(p) {
     setHudActive(next);
   });
 
-  onEnvClick(()  => setEnvLabel(cycleEnv()));
-  onMassClick(() => setMassLabel(cycleMass()));
+  onEnvClick(()   => setEnvLabel(cycleEnv()));
+  onMassClick(()  => setMassLabel(cycleMass()));
+  onScaleClick(() => setScaleLabel(cycleScale()));
 
-  let _hudOn = false;
+  onPresetClick(() => {
+    _presetIdx = (_presetIdx + 1) % PRESETS.length;
+    const pr = PRESETS[_presetIdx];
+    clearTrail();
+    setEnv(pr.env);
+    setMass(pr.mass);
+    setPendulumState(pr.a1, pr.a2, pr.a1v, pr.a2v);
+    setTrailStyle(pr.style);
+    setMirrorState(pr.mirror);
+    setMirrorActive(pr.mirror);
+    setStyleLabel(pr.style.toUpperCase());
+    setEnvLabel(pr.env);
+    setMassLabel(pr.mass);
+    setPresetLabel(pr.label);
+    setSliderValues(pr.speed, pr.trail);
+    lastInteractAt = Date.now();
+  });
+
+  let _hudOn     = false;
+  let _presetIdx = 0;  // 0=DEFAULT, 클릭 시 다음으로 순환
 
   // ── setup ────────────────────────────────────────────────────────────────
   p.setup = function() {
@@ -138,8 +168,18 @@ new p5(function(p) {
       dragDistRatio = dragDistRatio * 0.80 + rawRatio * 0.20;
     }
 
-    // ── pending 홀드: 추 잦아들게 ─────────────────────────────────────
-    if (mode === 'pending') dampForDrag(0.96, 0.96);
+    // ── pending 홀드: 차지 시작 전까지만 감속 ────────────────────────
+    if (mode === 'pending' && chargeLevel <= 0) dampForDrag(0.96, 0.96);
+
+    // ── 차지 레벨 업데이트 ────────────────────────────────────────────
+    if (mode === 'pending') {
+      const holdMs = Date.now() - pressTime;
+      if (holdMs > CHARGE_START_MS) {
+        chargeLevel = Math.min((holdMs - CHARGE_START_MS) / CHARGE_FULL_MS, 1.0);
+        chargeSoundTimer++;
+        if (chargeSoundTimer % 6 === 0) soundCharge(chargeLevel);
+      }
+    }
 
     // ── dragging: a1 커서에 직접 고정, 속도는 거리비 스케일 ───────────
     // (서브스텝 루프에서 stepRK4_drag로 a2만 지구 중력 물리 적분)
@@ -190,6 +230,9 @@ new p5(function(p) {
 
     const pos = getPos();  // 서브스텝 종료 후 최종 위치
 
+    // ── 환경 배경 렌더 ────────────────────────────────────────────────────
+    renderBg(p, envMode, energy, pos.cx, pos.cy);
+
     // ── 카오스 관절 노이즈 (서브스텝 외부, 프레임 1회) ───────────────────
     applyChaosNoise();
 
@@ -203,12 +246,10 @@ new p5(function(p) {
         const signChanged = prevA2vSign !== 0 && curSign !== prevA2vSign;
         soundTimer++;
         if (signChanged) {
-          // 방향 전환 → 즉시 통통 재생
-          soundNote(a2, absA2v);
+          soundNote(a2, absA2v, pos.x2 / p.width);
           soundTimer = 0;
         } else if (spinning && soundTimer >= 24) {
-          // 고속 완전회전만 주기 재생 — 느린 원형 패턴은 해당 없음
-          soundNote(a2, absA2v);
+          soundNote(a2, absA2v, pos.x2 / p.width);
           soundTimer = 0;
         }
       } else {
@@ -248,6 +289,34 @@ new p5(function(p) {
 
     // ── bob2 (질량 모드별) ────────────────────────────────────────────────
     drawBob2(p, pos);
+
+    // ── 차지 비주얼 (홀드 중 링 게이지) ─────────────────────────────────
+    if (mode === 'pending' && chargeLevel > 0.02) {
+      const t     = Date.now();
+      const pulse = (Math.sin(t * 0.008 * (1 + chargeLevel * 3)) + 1) / 2;
+      const cr    = Math.round(p.lerp(160, 255, chargeLevel));
+      const cg    = Math.round(p.lerp(200,  60, chargeLevel));
+      const cb    = Math.round(p.lerp(255,  20, chargeLevel));
+      const baseR = 18 + chargeLevel * 20;
+      p.noFill();
+      // 외부 맥동 헤일로
+      p.stroke(cr, cg, cb, (12 + pulse * 22) * chargeLevel);
+      p.strokeWeight(7);
+      p.circle(cursorX, cursorY, (baseR + pulse * 12) * 2);
+      // 주 링
+      p.stroke(cr, cg, cb, 90 + chargeLevel * 130);
+      p.strokeWeight(1.2);
+      p.circle(cursorX, cursorY, baseR * 2);
+      // 진행 아크 (12시 시계방향)
+      const sa = -Math.PI / 2;
+      p.stroke(cr, cg, cb, 220);
+      p.strokeWeight(2.2);
+      p.arc(cursorX, cursorY, (baseR - 5) * 2, (baseR - 5) * 2, sa, sa + chargeLevel * Math.PI * 2);
+      // 중심 핵
+      p.noStroke();
+      p.fill(255, 255, 255, 80 + chargeLevel * 160);
+      p.circle(cursorX, cursorY, 2.5 + chargeLevel * 4.5);
+    }
 
     // ── 드래그 속도 게이지 (손가락/커서 위치) ────────────────────────────
     if (mode === 'dragging') {
@@ -410,12 +479,29 @@ new p5(function(p) {
       p.noStroke(); p.fill(215,  95, 255, 215); p.circle(x1, y1, j1s * 0.52);
 
     } else {
-      // EARTH
-      p.stroke(60, 80, 110, 180); p.strokeWeight(1.2);
+      // EARTH — 따뜻한 앰버 글로우 팔 + 레이어드 피벗
+      // 팔 글로우 (두꺼운 반투명 레이어)
+      p.stroke(110, 140, 90, 40); p.strokeWeight(5);
       p.line(cx, cy, x1, y1); p.line(x1, y1, x2, y2);
+      // 팔 메인
+      p.stroke(75, 100, 65, 200); p.strokeWeight(1.4);
+      p.line(cx, cy, x1, y1); p.line(x1, y1, x2, y2);
+
+      // 메인 피벗: 이중 링 + 코어
+      p.noFill();
+      p.stroke(130, 165, 100, 90); p.strokeWeight(1.2); p.circle(cx, cy, 22);
+      p.stroke(150, 185, 115, 45); p.strokeWeight(0.7); p.circle(cx, cy, 36);
       p.noStroke();
-      p.fill(120, 140, 160, 200); p.circle(cx, cy, 10);
-      p.fill(160, 180, 200, 200); p.circle(x1, y1, j1s);
+      p.fill( 90, 120,  70, 220); p.circle(cx, cy, 10);
+      p.fill(155, 190, 120, 210); p.circle(cx, cy,  5);
+      p.fill(215, 240, 195, 200); p.circle(cx - 1, cy - 1.5, 2.2); // 반사광
+
+      // 미드 조인트: 질량 비례 소형 피벗
+      p.noFill();
+      p.stroke(125, 160,  95, 110); p.strokeWeight(1.0); p.circle(x1, y1, j1s * 1.6);
+      p.noStroke();
+      p.fill( 85, 115,  65, 210); p.circle(x1, y1, j1s * 0.70);
+      p.fill(150, 185, 115, 190); p.circle(x1, y1, j1s * 0.38);
     }
   }
 
@@ -428,8 +514,11 @@ new p5(function(p) {
 
   function onPressStart() {
     ensureAudio();
-    lastInteractAt = Date.now();  // 조작 감지 → 타이머 리셋
-    mode  = 'pending';   // 아직 탭/드래그 미결정
+    lastInteractAt = Date.now();
+    pressTime      = Date.now();
+    chargeLevel    = 0;
+    chargeSoundTimer = 0;
+    mode  = 'pending';
     pressX = cursorX;
     pressY = cursorY;
     const pos0 = getPos();
@@ -446,19 +535,31 @@ new p5(function(p) {
     const dx = cursorX - pressX, dy = cursorY - pressY;
     if (dx * dx + dy * dy > DRAG_THRESHOLD * DRAG_THRESHOLD) {
       mode = 'dragging';
+      chargeLevel = 0;  // 드래그 전환 시 차지 취소
     }
   }
 
   function onPressEnd() {
     if (mode === 'pending') {
-      // ── TAP: 짧은 클릭 → 임펄스 충격 ────────────────────────────────
-      applyImpulse(cursorX, cursorY, 1.0, 0.45, p);
-      const col = _palette();
-      const TAP_NOTES = [659.25, 783.99, 880.00, 987.77, 1046.50];
-      soundTap(TAP_NOTES[Math.floor(p.random(TAP_NOTES.length))]);
-      addRings(cursorX, cursorY, col[0], col[1], col[2], 2, 205);
-      spawnParticles(p, cursorX, cursorY, col[0], col[1], col[2], 12, 5);
-      energy = Math.max(0, energy - 0.08);
+      if (chargeLevel > 0.12) {
+        // ── CHARGE: 홀드 릴리즈 → 차지 폭발 ─────────────────────────
+        applyChargeImpulse(cursorX, cursorY, chargeLevel, p);
+        soundChargeRelease(chargeLevel);
+        const col = _palette();
+        flickBurst(p, cursorX, cursorY, col[0], col[1], col[2], chargeLevel * 7);
+        addRings(cursorX, cursorY, col[0], col[1], col[2], 3, 230);
+        energy = Math.max(0, energy - chargeLevel * 0.30);
+        chargeLevel = 0;
+      } else {
+        // ── TAP: 짧은 클릭 → 임펄스 충격 ────────────────────────────
+        applyImpulse(cursorX, cursorY, 1.0, 0.45, p);
+        const col = _palette();
+        const TAP_NOTES = [659.25, 783.99, 880.00, 987.77, 1046.50];
+        soundTap(TAP_NOTES[Math.floor(p.random(TAP_NOTES.length))]);
+        addRings(cursorX, cursorY, col[0], col[1], col[2], 2, 205);
+        spawnParticles(p, cursorX, cursorY, col[0], col[1], col[2], 12, 5);
+        energy = Math.max(0, energy - 0.08);
+      }
 
     } else if (mode === 'dragging') {
       // ── FLICK: 드래그 릴리즈 → 마지막 커서 지점에서 폭발
@@ -528,6 +629,7 @@ new p5(function(p) {
   p.windowResized = function() {
     p.resizeCanvas(p.windowWidth, p.windowHeight);
     clearTrail();
+    resetBg();
     resetPendulum(p);
   };
 

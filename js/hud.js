@@ -4,7 +4,7 @@ import { currentG, currentDamp, envMode, ENV_G_MAX, ENV_DAMP_MAX } from './physi
 const AV_MAX  = 14;
 
 const PANEL_W = 168;
-const PANEL_H = 320;   // θ1/θ2 행 제거 + 스파크라인으로 단축
+const PANEL_H = 348;   // TURB 지표 추가로 높이 확장
 const PAD     = 11;
 
 const DC_X = PANEL_W / 2;
@@ -24,7 +24,7 @@ const ENV_COL = {
 
 // ── 히스토리 버퍼 ──────────────────────────────────────────────────────────────
 const LISS_MAX   = 180;   // 위상 궤적 보존 프레임
-const ENERGY_MAX = 48;    // 에너지 스파크라인 보존 프레임
+const ENERGY_MAX = 200;   // 에너지 스파크라인 보존 프레임 (확장)
 const lissHistory   = [];
 const energyHistory = [];
 let _scanOffset = 0;
@@ -49,7 +49,10 @@ export function renderHUD(p, a1, a2, a1v, a2v, L1, L2, m1 = 12, m2 = 6, massMode
 
   _scanOffset = (_scanOffset + 0.008) % 1.0;
 
-  const scale = Math.max(1.0, Math.min(p.width / 960, 2.0));
+  const isMobile = p.width < 600;
+  const scale = isMobile
+    ? Math.max(0.6, Math.min(p.width / 480, 1.0))
+    : Math.max(1.0, Math.min(p.width / 960, 2.0));
   const ox = p.width - PANEL_W * scale - 16;
   const oy = 16;
   const cx = DC_X;
@@ -322,6 +325,28 @@ export function renderHUD(p, a1, a2, a1v, a2v, L1, L2, m1 = 12, m2 = 6, massMode
   p.textAlign(p.RIGHT, p.TOP);
   p.text((chaos * 100).toFixed(0) + '%', eBarX + eBarW, wBarY - 8);
 
+  // ── 난기류(TURB) — 에너지 변동계수 기반 카오스 측정 ───────────────────────
+  // wBarY + barH + 15 = 305 + 5 + 10 = 320
+  const turbY = wBarY + barH + 10;
+  const turb  = _turbulence(energyHistory);
+  const tR    = p.lerp( 50, 255, turb);
+  const tG    = p.lerp(220, 80,  turb);
+  const tB    = p.lerp(255, 50,  turb);
+  p.stroke(tR, tG, tB, 20); p.strokeWeight(0.5);
+  p.line(PAD, turbY, PANEL_W - PAD, turbY);
+
+  p.noStroke();
+  p.fill(tR, tG, tB, 80);
+  p.textSize(6.5); p.textAlign(p.LEFT, p.TOP);
+  p.text('TURB', eBarX, turbY + 5);
+  p.fill(tR, tG, tB, 190);
+  p.textSize(7); p.textAlign(p.RIGHT, p.TOP);
+  p.text((turb * 100).toFixed(0) + '%', eBarX + eBarW, turbY + 4);
+
+  const turbBarY = turbY + 18;
+  p.fill(tR, tG, tB, 14);  p.rect(eBarX, turbBarY, eBarW, barH, 2);
+  p.fill(tR, tG, tB, 160); p.rect(eBarX, turbBarY, eBarW * turb, barH, 2);
+
   // ── 코너 브래킷 테두리 ─────────────────────────────────────────────────────
   const BL = 13;
   p.noFill();
@@ -367,6 +392,16 @@ function _velArc(p, cx, cy, r, vel, col, sw) {
   p.noStroke();
   p.fill(r0, g0, b0, Math.min(alpha * 1.15, 255));
   p.circle(cx + Math.cos(tipAng)*r, cy + Math.sin(tipAng)*r, sw * 2.5);
+}
+
+// ── 난기류 지수: 에너지 변동계수 (σ/|μ|) → 0~1 정규화 ───────────────────────
+function _turbulence(hist) {
+  if (hist.length < 8) return 0;
+  const n    = hist.length;
+  const mean = hist.reduce((s, v) => s + v, 0) / n;
+  if (Math.abs(mean) < 0.001) return 0;
+  const variance = hist.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
+  return Math.min(Math.sqrt(variance) / Math.abs(mean), 1.0);
 }
 
 // ── 전체 역학적 에너지 (kU 단위) ─────────────────────────────────────────────

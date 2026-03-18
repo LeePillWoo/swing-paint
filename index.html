@@ -175,6 +175,22 @@
     }
     .env-btn.water:hover { box-shadow: 0 0 14px rgba(0,204,221,0.28); }
 
+    /* ── SCALE 버튼 (PENTA / BLUES / MUTE) ──────────────────── */
+    .scale-btn.penta { color: #00ccbb; border-color: rgba(  0,204,187,0.32); }
+    .scale-btn.blues { color: #ff9944; border-color: rgba(255,153, 68,0.32); box-shadow: 0 0 7px rgba(255,153,68,0.14); }
+    .scale-btn.mute  { color: rgba(255,255,255,0.20); border-color: rgba(255,255,255,0.08); }
+
+    /* ── PRESET 버튼 ─────────────────────────────────────────── */
+    .preset-btn {
+      color: rgba(255, 215, 80, 0.38);
+      border-color: rgba(255, 215, 80, 0.15);
+    }
+    .preset-btn:hover {
+      color: rgba(255, 215, 80, 0.70);
+      border-color: rgba(255, 215, 80, 0.32);
+      box-shadow: 0 0 10px rgba(255, 215, 80, 0.18);
+    }
+
     /* ── MASS 버튼 (STANDARD / IRON / FEATHER) ──────────────── */
     .mass-btn.standard {
       color: #88aacc;
@@ -215,6 +231,16 @@
       color: #bb88ff;
       border-color: rgba(187,136,255,0.38);
       box-shadow: 0 0 8px rgba(187,136,255,0.12);
+    }
+    .trail-btn.ribbon {
+      color: #cc66ff;
+      border-color: rgba(204,102,255,0.38);
+      box-shadow: 0 0 8px rgba(204,102,255,0.14);
+    }
+    .trail-btn.spark {
+      color: #ffdd55;
+      border-color: rgba(255,221,85,0.38);
+      box-shadow: 0 0 8px rgba(255,221,85,0.14);
     }
 
     /* ── HUD 버튼 ────────────────────────────────────────────── */
@@ -387,6 +413,7 @@
     <div id="env-panel" class="ui-panel">
       <button class="mode-btn env-btn chaos" id="btn-env">CHAOS</button>
       <button class="mode-btn mass-btn standard" id="btn-mass">STANDARD</button>
+      <button class="mode-btn preset-btn" id="btn-preset">DEFAULT</button>
     </div>
 
     <!-- 슬라이더 (하단 중앙) -->
@@ -411,6 +438,7 @@
     <div id="style-panel" class="ui-panel">
       <button class="mode-btn mirror-btn" id="btn-mirror">MIRROR</button>
       <button class="mode-btn trail-btn glow" id="btn-style">GLOW</button>
+      <button class="mode-btn scale-btn penta" id="btn-scale">PENTA</button>
     </div>
 
   </div>

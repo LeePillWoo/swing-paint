@@ -4,9 +4,20 @@ let audioCtx   = null;
 let lastNoteAt = 0;
 let _chargeNode = null;   // 차지 중 단일 오실레이터 (폴리포니 방지)
 
-// C 펜타토닉 2옥타브
-const PENTATONIC = [261.63, 293.66, 329.63, 392.00, 440.00,
-                    523.25, 587.33, 659.25, 783.99, 880.00];
+// ── 스케일 정의 (2옥타브, 10음) ──────────────────────────────────────────────
+const SCALES = {
+  PENTA:  [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00],  // C 장조 펜타토닉
+  MINOR:  [261.63, 311.13, 349.23, 392.00, 466.16, 523.25, 622.25, 698.46, 783.99, 932.33],  // C 단조 펜타토닉
+  BLUES:  [261.63, 311.13, 349.23, 369.99, 392.00, 466.16, 523.25, 622.25, 739.99, 783.99],  // C 블루스
+  CHROMA: [261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99, 392.00, 415.30, 440.00],  // C 크로매틱
+};
+const SCALE_NAMES = ['PENTA', 'BLUES', 'MUTE'];
+let scaleMode = 'PENTA';
+
+export function cycleScale() {
+  scaleMode = SCALE_NAMES[(SCALE_NAMES.indexOf(scaleMode) + 1) % SCALE_NAMES.length];
+  return scaleMode;
+}
 
 export function ensureAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -77,9 +88,10 @@ export function soundTap(pitch) {
 }
 
 // ── 펜듈럼 선회 멜로디 ───────────────────────────────────────────────────────
-// angle: a2 각도, vel: |a2v| (속도 → 게인 표현력)
-export function soundNote(angle, vel = 1.0) {
+// angle: a2 각도, vel: |a2v|, xNorm: bob x위치 (0~1, 스테레오 패닝)
+export function soundNote(angle, vel = 1.0, xNorm = 0.5) {
   if (!audioCtx) return;
+  if (scaleMode === 'MUTE') return;  // 진자 멜로디 음소거
   const now = audioCtx.currentTime;
 
   // SPACE는 에코 잔향 겹침 허용 위해 간격 단축
@@ -87,11 +99,12 @@ export function soundNote(angle, vel = 1.0) {
   if (now - lastNoteAt < minInterval) return;
   lastNoteAt = now;
 
-  const norm = (angle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-  const idx  = Math.floor(norm / (2 * Math.PI) * PENTATONIC.length);
-  const freq = getNotePitch(PENTATONIC[idx]);
+  const scale = SCALES[scaleMode];
+  const norm  = (angle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const idx   = Math.floor(norm / (2 * Math.PI) * scale.length);
+  const freq  = getNotePitch(scale[idx]);
 
-  // 속도 → 게인 (조용히 흔들릴 때는 속삭이듯, 빠를 때는 또렷하게)
+  // 속도 → 게인
   const velNorm = Math.min(Math.abs(vel) / 4, 1.0);
 
   // ENV별 파라미터
@@ -104,11 +117,20 @@ export function soundNote(angle, vel = 1.0) {
     peakGain = (0.04 + velNorm * 0.07) * 1.35;
     decaySec = 0.16;
     freqEnd  = freq * 0.82;
-  } else {  // EARTH
+  } else {
     peakGain = 0.04 + velNorm * 0.07;
     decaySec = 0.38;
     freqEnd  = freq * 0.92;
   }
+
+  // 스테레오 패너 (x 위치 → 좌우)
+  const panner = audioCtx.createStereoPanner
+    ? audioCtx.createStereoPanner() : null;
+  if (panner) {
+    panner.pan.value = Math.max(-1, Math.min(1, (xNorm - 0.5) * 1.6));
+    panner.connect(audioCtx.destination);
+  }
+  const outNode = panner || audioCtx.destination;
 
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
@@ -119,8 +141,7 @@ export function soundNote(angle, vel = 1.0) {
   g.gain.exponentialRampToValueAtTime(0.001, now + decaySec);
 
   if (envMode === 'WATER') {
-    // 저역통과 필터 — 수중 먹먹함 (낮은 컷오프 + 공명으로 수압감)
-    o.detune.value = -25;  // 약간 플랫 — 수중 음속 차이감
+    o.detune.value = -25;
     const flt = audioCtx.createBiquadFilter();
     flt.type = 'lowpass';
     flt.frequency.value = 320;
@@ -129,10 +150,24 @@ export function soundNote(angle, vel = 1.0) {
   } else {
     o.connect(g);
   }
-  g.connect(audioCtx.destination);
+  g.connect(outNode);
   o.start(now); o.stop(now + decaySec + 0.05);
 
-  // SPACE 단일 에코 — 0.3초 후 잔향
+  // 화음: 5도(완전5도) — 속도 높거나 CHAOS일 때
+  if (velNorm > 0.55 || envMode === 'CHAOS') {
+    const harmFreq = Math.min(freq * 1.498, 2200);
+    const oh = audioCtx.createOscillator();
+    const gh = audioCtx.createGain();
+    oh.type = 'sine';
+    oh.frequency.setValueAtTime(harmFreq, now);
+    oh.frequency.exponentialRampToValueAtTime(harmFreq * (freqEnd / freq), now + decaySec);
+    gh.gain.setValueAtTime(peakGain * 0.20, now);
+    gh.gain.exponentialRampToValueAtTime(0.001, now + decaySec);
+    oh.connect(gh); gh.connect(outNode);
+    oh.start(now); oh.stop(now + decaySec + 0.05);
+  }
+
+  // SPACE 에코
   if (envMode === 'SPACE') {
     const oe = audioCtx.createOscillator();
     const ge = audioCtx.createGain();
@@ -142,7 +177,7 @@ export function soundNote(angle, vel = 1.0) {
     oe.frequency.exponentialRampToValueAtTime(freq * 0.92, es + 0.5);
     ge.gain.setValueAtTime(peakGain * 0.28, es);
     ge.gain.exponentialRampToValueAtTime(0.001, es + 0.5);
-    oe.connect(ge); ge.connect(audioCtx.destination);
+    oe.connect(ge); ge.connect(outNode);
     oe.start(es); oe.stop(es + 0.55);
   }
 }

@@ -1,9 +1,11 @@
 // ── 버튼 ────────────────────────────────────────────────────────────────────
-const btnMirror = document.getElementById('btn-mirror');
-const btnStyle  = document.getElementById('btn-style');
-const btnHud    = document.getElementById('btn-hud');
-const btnEnv    = document.getElementById('btn-env');
-const btnMass   = document.getElementById('btn-mass');
+const btnMirror  = document.getElementById('btn-mirror');
+const btnStyle   = document.getElementById('btn-style');
+const btnHud     = document.getElementById('btn-hud');
+const btnEnv     = document.getElementById('btn-env');
+const btnMass    = document.getElementById('btn-mass');
+const btnPreset  = document.getElementById('btn-preset');
+const btnScale   = document.getElementById('btn-scale');
 
 // ── 슬라이더 ────────────────────────────────────────────────────────────────
 const speedSlider = document.getElementById('speed-slider');
@@ -56,9 +58,26 @@ export function setMassLabel(label) {
   btnMass.className   = `mode-btn mass-btn ${label.toLowerCase()}`;
 }
 
+export function setPresetLabel(label) {
+  btnPreset.textContent = label;
+}
+
+export function setScaleLabel(label) {
+  btnScale.textContent = label;
+  btnScale.className   = `mode-btn scale-btn ${label.toLowerCase()}`;
+}
+
+// 슬라이더 값 직접 설정 (프리셋용)
+export function setSliderValues(speed, trail) {
+  speedSlider.value = speed;
+  trailSlider.value = trail;
+}
+
 // ── 이벤트 바인딩 ────────────────────────────────────────────────────────────
-export function onMirrorClick(cb) { btnMirror.addEventListener('click', cb); }
-export function onStyleClick(cb)  { btnStyle.addEventListener('click', cb); }
-export function onHudClick(cb)    { btnHud.addEventListener('click', cb); }
-export function onEnvClick(cb)    { btnEnv.addEventListener('click', cb); }
-export function onMassClick(cb)   { btnMass.addEventListener('click', cb); }
+export function onMirrorClick(cb)  { btnMirror.addEventListener('click', cb); }
+export function onStyleClick(cb)   { btnStyle.addEventListener('click', cb); }
+export function onHudClick(cb)     { btnHud.addEventListener('click', cb); }
+export function onEnvClick(cb)     { btnEnv.addEventListener('click', cb); }
+export function onMassClick(cb)    { btnMass.addEventListener('click', cb); }
+export function onPresetClick(cb)  { btnPreset.addEventListener('click', cb); }
+export function onScaleClick(cb)   { btnScale.addEventListener('click', cb); }
