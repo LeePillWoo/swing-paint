@@ -8,7 +8,7 @@ export const TRAIL_MAX        = 4500;   // 라인 모드 (+25% 연장)
 export const TRAIL_MAX_COMET  = 1800;   // 코맷 (도트 절반 빈도)
 export const TRAIL_MAX_GLOW   = 1200;   // 글로우 (올챙이)
 export const TRAIL_MAX_RIBBON =  900;   // 리본 (퍼프 폴리곤)
-export const TRAIL_MAX_SPARK  = 2000;   // 스파크 (중력 드리프트 점)
+export const TRAIL_MAX_SPARK  = 1500;   // 스파크 (중력 드리프트 점)
 
 // 모드별 페이드 속도
 export const TRAIL_FADE_LINE   = 0.00112; // ~893 프레임 (+25% 연장)

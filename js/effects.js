@@ -111,8 +111,10 @@ export function nudgeSweep(p, x, y, rc, gc, bc, dirAng) {
 // 모드별 최대 버퍼 크기로 제한
 export function pushTrail(x, y, r, g, b, w, fade = 1.0) {
   // driftY/driftX: spark 렌더에서 사용 — push 시점에 초기화해 런타임 undefined 체크 제거
+  const isSpark = trailStyle === 'spark';
   trail.push({ x, y, alpha: 1.0, r, g, b, w, fade,
-               driftY: 0, driftX: (Math.random() - 0.5) * 0.12 });
+               driftY: isSpark ? (Math.random() - 0.5) * 2.25 - 0.4 : 0,
+               driftX: isSpark ? (Math.random() - 0.5) * 2.25 : (Math.random() - 0.5) * 0.12 });
   let max;
   if      (mirrorMode)               max = TRAIL_MAX_MIRROR;
   else if (trailStyle === 'glow')    max = TRAIL_MAX_GLOW;
@@ -348,8 +350,8 @@ function renderRibbonTrail(p, pivotX, pivotY, trailScale) {
     if (len < 0.01) { dx = 1; dy = 0; } else { dx /= len; dy /= len; }
     const nx = -dy, ny = dx;
     const hw = pt.w * (i / n) * 9;   // 꼬리→머리로 선형 두꺼짐
-    lx.push(pt.x + nx * hw);  ly.push(pt.y + ny * hw);
-    rx.push(pt.x - nx * hw);  ry.push(pt.y - ny * hw);
+    _lx[i] = pt.x + nx * hw;  _ly[i] = pt.y + ny * hw;
+    _rx[i] = pt.x - nx * hw;  _ry[i] = pt.y - ny * hw;
   }
 
   const iters = mirrorMode ? 4 : 1;
@@ -363,8 +365,8 @@ function renderRibbonTrail(p, pivotX, pivotY, trailScale) {
       const a = Math.min(cur.alpha, prev.alpha);
       if (a <= 0) continue;
 
-      let l1x = lx[i-1], l1y = ly[i-1], l2x = lx[i], l2y = ly[i];
-      let r1x = rx[i-1], r1y = ry[i-1], r2x = rx[i], r2y = ry[i];
+      let l1x = _lx[i-1], l1y = _ly[i-1], l2x = _lx[i], l2y = _ly[i];
+      let r1x = _rx[i-1], r1y = _ry[i-1], r2x = _rx[i], r2y = _ry[i];
       if (m === 1 || m === 3) { l1x = 2*pivotX-l1x; l2x = 2*pivotX-l2x; r1x = 2*pivotX-r1x; r2x = 2*pivotX-r2x; }
       if (m === 2 || m === 3) { l1y = 2*pivotY-l1y; l2y = 2*pivotY-l2y; r1y = 2*pivotY-r1y; r2y = 2*pivotY-r2y; }
 
@@ -399,7 +401,8 @@ function renderSparkTrail(p, pivotX, pivotY, trailScale) {
   let write = 0;
   for (let i = 0; i < trail.length; i++) {
     const pt = trail[i];
-    pt.driftY = Math.min(pt.driftY + 0.016, 1.0);
+    pt.driftX *= 0.91;
+    pt.driftY  = pt.driftY * 0.91 + 0.22 * Math.max(pt.alpha, 0.08);
     pt.y += pt.driftY;
     pt.x += pt.driftX;
     pt.alpha -= TRAIL_FADE_SPARK * pt.fade * trailScale;
