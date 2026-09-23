@@ -94,4 +94,4 @@ js/main.js          p5 인스턴스, 드로우 루프, 인터랙션 상태머신
 
 ## 라이선스
 
-MIT
+MIT — 자세한 내용은 [LICENSE](LICENSE) 참고.
