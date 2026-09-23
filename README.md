@@ -4,6 +4,9 @@
 라그랑지안 방정식을 RK4로 적분해 나온 궤적이 그대로 붓질이 된다.
 같은 그림은 두 번 나오지 않는다.
 
+[**▶ 라이브 데모**](https://leepillwoo.github.io/swing-paint/)
+
+![demo](https://img.shields.io/badge/demo-live-brightgreen?link=https://leepillwoo.github.io/swing-paint/)
 ![HTML5](https://img.shields.io/badge/HTML5-canvas-E34F26)
 ![p5.js](https://img.shields.io/badge/p5.js-1.9.3-ED225D)
 ![Web Audio](https://img.shields.io/badge/Web%20Audio-API-4A90D9)
@@ -13,7 +16,9 @@
 
 ## 실행
 
-빌드 과정 없음. ES 모듈을 쓰기 때문에 `file://` 로 열면 안 되고 로컬 서버가 필요하다.
+브라우저에서 [leepillwoo.github.io/swing-paint](https://leepillwoo.github.io/swing-paint/) 로 바로 열 수 있다.
+
+로컬에서 돌리려면 — 빌드 과정 없음. ES 모듈을 쓰기 때문에 `file://` 로 열면 안 되고 로컬 서버가 필요하다.
 
 ```bash
 python -m http.server 8000
